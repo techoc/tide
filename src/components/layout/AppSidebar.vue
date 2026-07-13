@@ -6,6 +6,16 @@ import { useSettingsStore } from '@/stores/settings'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import type { TorrentFilter } from '@/types/qbittorrent'
 
+const props = withDefaults(defineProps<{
+  forceExpanded?: boolean
+}>(), {
+  forceExpanded: false,
+})
+
+const emit = defineEmits<{
+  navigate: []
+}>()
+
 interface StatusItem {
   key: TorrentFilter
   label: string
@@ -29,7 +39,8 @@ const toast = useToast()
 const confirmDialog = useConfirmDialog()
 const router = useRouter()
 
-const collapsed = computed(() => settings.sidebarCollapsed)
+const collapsed = computed(() => !props.forceExpanded && settings.sidebarCollapsed)
+const isDashboard = computed(() => router.currentRoute.value.name === 'dashboard')
 
 /** 底部导航项：统计 / 设置 */
 const bottomItems = [
@@ -38,30 +49,43 @@ const bottomItems = [
 ]
 
 /** 若当前不在种子列表页，则跳转回去以查看筛选结果 */
-function ensureDashboard() {
+async function ensureDashboard() {
   if (router.currentRoute.value.name !== 'dashboard') {
-    router.push({ name: 'dashboard' })
+    await router.push({ name: 'dashboard' })
   }
+  emit('navigate')
 }
 
-function selectStatus(key: TorrentFilter) {
+async function selectStatus(key: TorrentFilter) {
   store.setFilter(key)
-  ensureDashboard()
+  await ensureDashboard()
 }
 
-function selectCategory(cat: string) {
+async function selectCategory(cat: string) {
   // 点击同一个分类时取消选中
   if (cat === '__uncategorized__') {
     store.activeCategory = store.activeCategory === '__uncategorized__' ? '' : '__uncategorized__'
   } else {
     store.activeCategory = store.activeCategory === cat ? '' : cat
   }
-  ensureDashboard()
+  await ensureDashboard()
 }
 
-function selectTag(tag: string) {
+async function selectTag(tag: string) {
   store.activeTag = store.activeTag === tag ? '' : tag
-  ensureDashboard()
+  await ensureDashboard()
+}
+
+function isStatusActive(key: TorrentFilter): boolean {
+  return isDashboard.value && store.filter === key
+}
+
+function handleBottomNavigate(
+  event: MouseEvent,
+  navigate: (event?: MouseEvent) => unknown,
+) {
+  navigate(event)
+  emit('navigate')
 }
 
 function formatCount(n: number): string {
@@ -190,11 +214,16 @@ async function deleteCategoryAction(name: string) {
       <span v-if="!collapsed" class="text-lg font-bold tracking-tight">Tide</span>
     </div>
 
-    <!-- 状态列表 -->
-    <div class="py-2 px-3" :class="collapsed ? 'px-0' : ''">
+    <!-- 主导航滚动区：统一滚动，避免分类和标签互相挤压 -->
+    <div
+      class="sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain py-1"
+      :class="collapsed ? 'px-2' : 'px-3'"
+    >
+      <!-- 状态列表 -->
+      <section>
       <div
         v-if="!collapsed"
-        class="px-2.5 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-[0.6px] text-muted"
+        class="px-2.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-[0.6px] text-muted"
       >
         状态
       </div>
@@ -202,9 +231,9 @@ async function deleteCategoryAction(name: string) {
         <button
           v-for="item in statusItems"
           :key="item.key"
-          class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
+          class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           :class="[
-            store.filter === item.key ? 'bg-primary/15 text-primary' : 'text-default',
+            isStatusActive(item.key) ? 'bg-primary/15 text-primary' : 'text-default',
             collapsed ? 'justify-center py-2.5' : '',
           ]"
           :title="collapsed ? item.label : undefined"
@@ -212,7 +241,7 @@ async function deleteCategoryAction(name: string) {
         >
           <span
             class="grid flex-shrink-0 place-items-center"
-            :class="store.filter === item.key ? 'text-primary' : 'text-muted'"
+            :class="isStatusActive(item.key) ? 'text-primary' : 'text-muted'"
           >
             <UIcon :name="item.icon" class="size-[18px]" />
           </span>
@@ -227,10 +256,10 @@ async function deleteCategoryAction(name: string) {
           />
         </button>
       </nav>
-    </div>
+      </section>
 
-    <!-- 分类列表（qBittorrent 分类） -->
-    <div v-if="!collapsed" class="flex min-h-0 flex-col px-3 py-2">
+      <!-- 分类列表（qBittorrent 分类） -->
+      <section v-if="!collapsed" class="mt-3">
       <div class="flex items-center justify-between px-2.5 pb-1.5 pt-2">
         <span class="text-[11px] font-semibold uppercase tracking-[0.6px] text-muted">分类</span>
         <UButton
@@ -242,18 +271,18 @@ async function deleteCategoryAction(name: string) {
           @click="openCreateCategory"
         />
       </div>
-      <div class="min-h-0 max-h-[200px] overflow-y-auto">
+      <div>
         <nav class="flex flex-col gap-0.5">
           <!-- 未分类 -->
           <button
-            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
-            :class="store.activeCategory === '__uncategorized__' ? 'bg-primary/15 text-primary' : 'text-default'"
+            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            :class="isDashboard && store.activeCategory === '__uncategorized__' ? 'bg-primary/15 text-primary' : 'text-default'"
             @click="selectCategory('__uncategorized__')"
             @contextmenu.prevent="onCategoryContextMenu($event, '', '')"
           >
             <span
               class="grid flex-shrink-0 place-items-center"
-              :class="store.activeCategory === '__uncategorized__' ? 'text-primary' : 'text-muted'"
+              :class="isDashboard && store.activeCategory === '__uncategorized__' ? 'text-primary' : 'text-muted'"
             >
               <UIcon name="i-lucide-folder-question" class="size-[16px]" />
             </span>
@@ -264,14 +293,14 @@ async function deleteCategoryAction(name: string) {
           <button
             v-for="cat in store.categories"
             :key="cat.name"
-            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
-            :class="store.activeCategory === cat.name ? 'bg-primary/15 text-primary' : 'text-default'"
+            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            :class="isDashboard && store.activeCategory === cat.name ? 'bg-primary/15 text-primary' : 'text-default'"
             @click="selectCategory(cat.name)"
             @contextmenu.prevent="onCategoryContextMenu($event, cat.name, cat.savePath)"
           >
             <span
               class="grid flex-shrink-0 place-items-center"
-              :class="store.activeCategory === cat.name ? 'text-primary' : 'text-muted'"
+              :class="isDashboard && store.activeCategory === cat.name ? 'text-primary' : 'text-muted'"
             >
               <UIcon name="i-lucide-folder" class="size-[16px]" />
             </span>
@@ -282,14 +311,14 @@ async function deleteCategoryAction(name: string) {
           </button>
         </nav>
       </div>
-    </div>
+      </section>
 
-    <!-- 标签列表 -->
-    <div v-if="!collapsed" class="flex min-h-0 flex-1 flex-col px-3 py-2 pb-0">
+      <!-- 标签列表 -->
+      <section v-if="!collapsed" class="mt-3 pb-3">
       <div class="px-2.5 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-[0.6px] text-muted">
         <span>标签</span>
       </div>
-      <div class="min-h-0 flex-1 overflow-y-auto">
+      <div>
         <div v-if="store.tags.length === 0" class="px-2.5 py-3 text-xs text-muted">
           暂无标签
         </div>
@@ -297,14 +326,14 @@ async function deleteCategoryAction(name: string) {
           <button
             v-for="tag in store.tags"
             :key="tag"
-            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
-            :class="store.activeTag === tag ? 'bg-primary/15 text-primary' : 'text-default'"
+            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            :class="isDashboard && store.activeTag === tag ? 'bg-primary/15 text-primary' : 'text-default'"
             @click="selectTag(tag)"
             @contextmenu="onTagContextMenu($event, tag)"
           >
             <span
               class="grid flex-shrink-0 place-items-center"
-              :class="store.activeTag === tag ? 'text-primary' : 'text-muted'"
+              :class="isDashboard && store.activeTag === tag ? 'text-primary' : 'text-muted'"
             >
               <UIcon name="i-lucide-tag" class="size-[16px]" />
             </span>
@@ -315,6 +344,7 @@ async function deleteCategoryAction(name: string) {
           </button>
         </nav>
       </div>
+      </section>
     </div>
 
     <!-- 底部导航：统计 / 设置 -->
@@ -327,13 +357,13 @@ async function deleteCategoryAction(name: string) {
         v-slot="{ isActive, navigate }"
       >
         <button
-          class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
+          class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
           :class="[
             isActive ? 'bg-primary/15 text-primary' : 'text-default',
             collapsed ? 'justify-center py-2.5' : '',
           ]"
           :title="collapsed ? item.label : undefined"
-          @click="navigate"
+          @click="handleBottomNavigate($event, navigate)"
         >
           <span
             class="grid flex-shrink-0 place-items-center"
@@ -347,18 +377,24 @@ async function deleteCategoryAction(name: string) {
     </div>
 
     <!-- 折叠按钮 -->
-    <div class="flex flex-shrink-0 justify-center border-t border-default p-2.5">
+    <div v-if="!props.forceExpanded" class="flex flex-shrink-0 justify-center border-t border-default p-2.5">
       <UTooltip
         :text="collapsed ? '展开侧边栏' : '折叠侧边栏'"
         :content="{ side: collapsed ? 'right' : 'left' }"
       >
         <UButton
-          :icon="collapsed ? 'i-lucide-chevron-right' : 'i-lucide-chevron-left'"
           color="neutral"
           variant="ghost"
           size="sm"
+          :aria-label="collapsed ? '展开侧边栏' : '折叠侧边栏'"
           @click="settings.toggleSidebar()"
-        />
+        >
+          <UIcon
+            name="i-lucide-chevron-left"
+            class="size-4 transition-transform duration-300"
+            :class="collapsed ? 'rotate-180' : ''"
+          />
+        </UButton>
       </UTooltip>
     </div>
 

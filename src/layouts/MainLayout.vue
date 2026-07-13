@@ -50,17 +50,19 @@ usePolling(store.fetchAltSpeedMode, 10000)
     </aside>
 
     <!-- 移动端抽屉侧边栏 -->
-    <USlideover v-model:open="mobileDrawer" side="left" :ui="{ content: 'w-60' }">
+    <USlideover
+      v-model:open="mobileDrawer"
+      side="left"
+      :ui="{ content: 'w-[280px] max-w-[86vw]' }"
+    >
       <template #content>
-        <div class="h-full" @click="mobileDrawer = false">
-          <AppSidebar />
-        </div>
+        <AppSidebar force-expanded @navigate="mobileDrawer = false" />
       </template>
     </USlideover>
 
     <!-- 主面板 -->
     <div class="flex min-w-0 flex-1 flex-col">
-      <div class="relative z-30 flex-shrink-0">
+      <div class="flex-shrink-0">
         <AppTopbar
           @add="openAdd"
           @toggle-sidebar="mobileDrawer = true"
