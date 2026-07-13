@@ -24,3 +24,15 @@ export async function getPreferences(): Promise<Record<string, unknown>> {
 export async function setPreferences(prefs: Record<string, unknown>): Promise<void> {
   await http.post('/app/setPreferences', form({ json: JSON.stringify(prefs) }))
 }
+
+/** 切换备选速度限制（开/关） */
+export async function toggleAlternativeSpeedLimits(): Promise<void> {
+  await http.post('/app/toggleAlternativeSpeedLimits')
+}
+
+/** 获取备选速度限制状态（true 表示已启用） */
+export async function getAlternativeSpeedLimitsMode(): Promise<boolean> {
+  const res = await http.get<string>('/app/alternativeSpeedLimitsEnabled')
+  // qBittorrent 返回 "1"/"0" 字符串
+  return res.data === '1'
+}

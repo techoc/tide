@@ -98,6 +98,125 @@ async function copyHash() {
   }
 }
 
+// ===== 限速设置 =====
+const dlLimitKiB = ref(0) // 下载限速（KiB/s），0 = 不限速
+const upLimitKiB = ref(0) // 上传限速（KiB/s），0 = 不限速
+const limitSaving = ref(false)
+
+// ===== 重命名 =====
+const editingName = ref(false)
+const nameInput = ref('')
+const renameSaving = ref(false)
+
+// ===== 保存路径 =====
+const editingPath = ref(false)
+const pathInput = ref('')
+const pathSaving = ref(false)
+
+// ===== 分类修改 =====
+const editingCategory = ref(false)
+const categorySelect = ref('')
+
+/** 分类下拉选项 */
+const categoryItems = computed(() => [
+  { label: '不指定分类', value: '' },
+  ...store.categories.map((c) => ({ label: c.name, value: c.name })),
+])
+
+/** 当种子变化时，同步限速值（bytes → KiB） */
+watch(
+  torrent,
+  (t) => {
+    if (t) {
+      dlLimitKiB.value = t.dl_limit > 0 ? Math.round(t.dl_limit / 1024) : 0
+      upLimitKiB.value = t.up_limit > 0 ? Math.round(t.up_limit / 1024) : 0
+      nameInput.value = t.name
+      pathInput.value = t.save_path
+      categorySelect.value = t.category
+    }
+  },
+  { immediate: true },
+)
+
+/** 保存限速 */
+async function saveLimits() {
+  if (!props.hash) return
+  limitSaving.value = true
+  try {
+    // KiB/s → bytes/s
+    const dlBytes = dlLimitKiB.value > 0 ? dlLimitKiB.value * 1024 : 0
+    const upBytes = upLimitKiB.value > 0 ? upLimitKiB.value * 1024 : 0
+    await store.setDownloadLimit(dlBytes, [props.hash])
+    await store.setUploadLimit(upBytes, [props.hash])
+    toast.add({ title: '限速已更新', color: 'success' })
+  } catch {
+    toast.add({ title: '限速设置失败', color: 'error' })
+  } finally {
+    limitSaving.value = false
+  }
+}
+
+/** 保存重命名 */
+async function saveName() {
+  if (!props.hash || !nameInput.value.trim()) return
+  renameSaving.value = true
+  try {
+    await store.renameTorrentAction(props.hash, nameInput.value.trim())
+    toast.add({ title: '名称已更新', color: 'success' })
+    editingName.value = false
+  } catch {
+    toast.add({ title: '重命名失败', color: 'error' })
+  } finally {
+    renameSaving.value = false
+  }
+}
+
+/** 保存路径 */
+async function savePath() {
+  if (!props.hash || !pathInput.value.trim()) return
+  pathSaving.value = true
+  try {
+    await store.setTorrentLocation(pathInput.value.trim(), [props.hash])
+    toast.add({ title: '路径已更新', color: 'success' })
+    editingPath.value = false
+  } catch {
+    toast.add({ title: '路径更新失败', color: 'error' })
+  } finally {
+    pathSaving.value = false
+  }
+}
+
+/** 保存分类 */
+async function saveCategory() {
+  if (!props.hash) return
+  try {
+    await store.setTorrentCategory(categorySelect.value, [props.hash])
+    toast.add({ title: '分类已更新', color: 'success' })
+    editingCategory.value = false
+  } catch {
+    toast.add({ title: '分类更新失败', color: 'error' })
+  }
+}
+
+/** 导出 .torrent 文件 */
+async function handleExport() {
+  if (!props.hash) return
+  try {
+    const blob = await store.exportTorrentFile(props.hash)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${torrent.value?.name || props.hash}.torrent`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.add({ title: '导出成功', color: 'success' })
+  } catch {
+    toast.add({ title: '导出失败', color: 'error' })
+  }
+}
+
 // 文件优先级操作
 async function handleFilePriority(indexes: number[], priority: 0 | 1 | 6 | 7) {
   if (!props.hash) return
@@ -397,6 +516,145 @@ const peerList = computed(() =>
                   />
                 </div>
               </div>
+            </div>
+
+            <!-- 操作区域 -->
+            <div class="mt-4 flex flex-col gap-3">
+              <h4 class="m-0 text-sm font-semibold text-default flex items-center gap-1.5">
+                <UIcon name="i-lucide-settings-2" class="size-4" />
+                种子操作
+              </h4>
+
+              <!-- 重命名 -->
+              <div class="flex items-center gap-2">
+                <span class="w-20 shrink-0 text-[13px] text-muted">名称</span>
+                <UInput
+                  v-if="editingName"
+                  v-model="nameInput"
+                  size="sm"
+                  class="flex-1"
+                  :loading="renameSaving"
+                  @keyup.enter="saveName"
+                />
+                <span v-else class="flex-1 text-[13px] truncate">{{ torrent.name }}</span>
+                <UButton
+                  v-if="editingName"
+                  size="xs"
+                  color="primary"
+                  icon="i-lucide-check"
+                  :loading="renameSaving"
+                  @click="saveName"
+                />
+                <UButton
+                  v-else
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-pencil"
+                  @click="() => { editingName = true }"
+                />
+              </div>
+
+              <!-- 分类 -->
+              <div class="flex items-center gap-2">
+                <span class="w-20 shrink-0 text-[13px] text-muted">分类</span>
+                <USelect
+                  v-if="editingCategory"
+                  v-model="categorySelect"
+                  :items="categoryItems"
+                  size="sm"
+                  class="flex-1"
+                />
+                <span v-else class="flex-1 text-[13px] truncate">{{ torrent.category || '未分类' }}</span>
+                <UButton
+                  v-if="editingCategory"
+                  size="xs"
+                  color="primary"
+                  icon="i-lucide-check"
+                  @click="saveCategory"
+                />
+                <UButton
+                  v-else
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-pencil"
+                  @click="() => { editingCategory = true }"
+                />
+              </div>
+
+              <!-- 保存路径 -->
+              <div class="flex items-center gap-2">
+                <span class="w-20 shrink-0 text-[13px] text-muted">路径</span>
+                <UInput
+                  v-if="editingPath"
+                  v-model="pathInput"
+                  size="sm"
+                  class="flex-1"
+                  :loading="pathSaving"
+                  @keyup.enter="savePath"
+                />
+                <span v-else class="flex-1 text-[13px] truncate">{{ torrent.save_path }}</span>
+                <UButton
+                  v-if="editingPath"
+                  size="xs"
+                  color="primary"
+                  icon="i-lucide-check"
+                  :loading="pathSaving"
+                  @click="savePath"
+                />
+                <UButton
+                  v-else
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  icon="i-lucide-pencil"
+                  @click="() => { editingPath = true }"
+                />
+              </div>
+
+              <!-- 限速设置 -->
+              <div class="flex items-center gap-2">
+                <span class="w-20 shrink-0 text-[13px] text-muted">下载限速</span>
+                <UInputNumber
+                  v-model="dlLimitKiB"
+                  :min="0"
+                  size="sm"
+                  class="flex-1"
+                  placeholder="0 = 不限速"
+                />
+                <span class="text-xs text-muted whitespace-nowrap">KiB/s</span>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="w-20 shrink-0 text-[13px] text-muted">上传限速</span>
+                <UInputNumber
+                  v-model="upLimitKiB"
+                  :min="0"
+                  size="sm"
+                  class="flex-1"
+                  placeholder="0 = 不限速"
+                />
+                <span class="text-xs text-muted whitespace-nowrap">KiB/s</span>
+              </div>
+              <UButton
+                size="sm"
+                color="primary"
+                variant="soft"
+                icon="i-lucide-save"
+                :loading="limitSaving"
+                label="保存限速"
+                @click="saveLimits"
+              />
+
+              <!-- 导出 .torrent -->
+              <UButton
+                size="sm"
+                color="neutral"
+                variant="soft"
+                icon="i-lucide-download"
+                label="导出 .torrent 文件"
+                @click="handleExport"
+              />
             </div>
           </template>
 

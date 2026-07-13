@@ -11,10 +11,21 @@ const confirmDialog = useConfirmDialog()
 const showTagModal = ref(false)
 const tagMode = ref<'add' | 'remove'>('add')
 
+// 分类选择弹窗
+const showCategoryModal = ref(false)
+const categorySelect = ref('')
+const categorySaving = ref(false)
+
 const hasSelection = computed(() => store.selectedCount > 0)
 
 /** 当前选中种子的 hash 数组 */
 const selectedHashesArray = computed(() => store.selectedArray())
+
+/** 分类下拉选项 */
+const categoryItems = computed(() => [
+  { label: '不指定分类', value: '' },
+  ...store.categories.map((c) => ({ label: c.name, value: c.name })),
+])
 
 async function handlePause() {
   try {
@@ -65,6 +76,24 @@ function openTagModal(mode: 'add' | 'remove') {
   tagMode.value = mode
   showTagModal.value = true
 }
+
+function openCategoryModal() {
+  categorySelect.value = ''
+  showCategoryModal.value = true
+}
+
+async function handleSetCategory() {
+  categorySaving.value = true
+  try {
+    await store.setTorrentCategory(categorySelect.value)
+    toast.add({ title: `已移动 ${store.selectedCount} 个种子到分类`, color: 'success' })
+    showCategoryModal.value = false
+  } catch {
+    toast.add({ title: '移动分类失败', color: 'error' })
+  } finally {
+    categorySaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -113,6 +142,14 @@ function openTagModal(mode: 'add' | 'remove') {
           color="neutral"
           variant="soft"
           size="sm"
+          icon="i-lucide-folder-input"
+          label="移动分类"
+          @click="openCategoryModal"
+        />
+        <UButton
+          color="neutral"
+          variant="soft"
+          size="sm"
           icon="i-lucide-tag"
           label="加标签"
           @click="openTagModal('add')"
@@ -152,6 +189,33 @@ function openTagModal(mode: 'add' | 'remove') {
     :hashes="selectedHashesArray"
     :target-label="`选中的 ${store.selectedCount} 项`"
   />
+
+  <!-- 分类选择弹窗 -->
+  <UModal v-model:open="showCategoryModal" title="移动到分类">
+    <template #body>
+      <div class="flex flex-col gap-3">
+        <p class="text-sm text-muted">将选中的 {{ store.selectedCount }} 个种子移动到指定分类：</p>
+        <USelect
+          v-model="categorySelect"
+          :items="categoryItems"
+          placeholder="选择分类"
+          class="w-full"
+        />
+      </div>
+    </template>
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <UButton color="neutral" variant="ghost" @click="() => { showCategoryModal = false }">取消</UButton>
+        <UButton
+          color="primary"
+          :loading="categorySaving"
+          @click="handleSetCategory"
+        >
+          确认移动
+        </UButton>
+      </div>
+    </template>
+  </UModal>
 
   <!-- 确认弹窗 -->
   <UModal v-model:open="confirmDialog.isOpen.value">

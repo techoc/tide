@@ -4,6 +4,7 @@ import { useTorrentListStore } from '@/stores/torrentList'
 import { usePolling } from '@/composables/usePolling'
 import { useSpeedHistory } from '@/composables/useSpeedHistory'
 import { useAddTorrentModal } from '@/composables/useAddTorrent'
+import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { categoryItems } from '@/stores/settings'
 import type { Torrent } from '@/types/qbittorrent'
 import TorrentTable from '@/components/torrent/TorrentTable.vue'
@@ -15,6 +16,8 @@ import TagSelectorModal from '@/components/torrent/TagSelectorModal.vue'
 import DetailDrawer from '@/components/torrent/DetailDrawer.vue'
 
 const store = useTorrentListStore()
+const toast = useToast()
+const confirmDialog = useConfirmDialog()
 const { open: openAdd } = useAddTorrentModal()
 
 // 轮询种子列表（每 2 秒）
@@ -26,6 +29,48 @@ usePolling(async () => {
   await store.fetchTransfer()
   push(store.dlSpeed, store.upSpeed)
 }, 2000)
+
+// ===== 键盘快捷键 =====
+
+/** Delete 键删除选中种子 */
+async function handleDeleteSelected() {
+  if (store.selectedCount === 0) return
+  const confirmed = await confirmDialog.confirm({
+    title: '删除种子',
+    description: `确认删除选中的 ${store.selectedCount} 个种子？（不删除文件）`,
+    confirmText: '确认删除',
+    variant: 'error',
+  })
+  if (!confirmed) return
+  try {
+    await store.deleteSelected(false)
+    toast.add({ title: `已删除 ${store.selectedCount} 个种子`, color: 'success' })
+  } catch {
+    toast.add({ title: '删除失败', color: 'error' })
+  }
+}
+
+function onKeydown(e: KeyboardEvent) {
+  // 忽略输入框中的按键
+  const target = e.target as HTMLElement
+  if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return
+
+  // Ctrl+A / Cmd+A：全选当前列表
+  if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+    e.preventDefault()
+    store.selectAll(true)
+    return
+  }
+
+  // Delete 键：删除选中种子
+  if (e.key === 'Delete') {
+    e.preventDefault()
+    handleDeleteSelected()
+  }
+}
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
+onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 const currentCategoryLabel = computed(() => {
   const item = categoryItems.find((c) => c.key === store.filter)
@@ -184,6 +229,32 @@ function onAddTag(hash: string) {
       :hashes="tagModal.hashes"
       :target-label="tagModal.targetLabel"
     />
+
+    <!-- 确认弹窗（Delete 快捷键删除用） -->
+    <UModal v-model:open="confirmDialog.isOpen.value">
+      <template #content>
+        <div class="p-6">
+          <h3 class="text-lg font-semibold mb-2">{{ confirmDialog.options.value.title }}</h3>
+          <p
+            v-if="confirmDialog.options.value.description"
+            class="text-sm text-muted mb-6"
+          >
+            {{ confirmDialog.options.value.description }}
+          </p>
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="ghost" @click="confirmDialog.handleCancel()">
+              {{ confirmDialog.options.value.cancelText || '取消' }}
+            </UButton>
+            <UButton
+              :color="confirmDialog.options.value.variant === 'error' ? 'error' : 'primary'"
+              @click="confirmDialog.handleConfirm()"
+            >
+              {{ confirmDialog.options.value.confirmText || '确认' }}
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
   </div>
 </template>
 

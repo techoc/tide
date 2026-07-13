@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useTorrentListStore } from '@/stores/torrentList'
 import { useSettingsStore } from '@/stores/settings'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import type { TorrentFilter } from '@/types/qbittorrent'
 
-interface CategoryItem {
+interface StatusItem {
   key: TorrentFilter
   label: string
   icon: string
 }
 
-const categories: CategoryItem[] = [
+const statusItems: StatusItem[] = [
   { key: 'all', label: '全部', icon: 'i-lucide-list' },
   { key: 'downloading', label: '正在下载', icon: 'i-lucide-cloud-download' },
   { key: 'seeding', label: '做种中', icon: 'i-lucide-cloud-upload' },
@@ -29,8 +29,17 @@ const confirmDialog = useConfirmDialog()
 
 const collapsed = computed(() => settings.sidebarCollapsed)
 
-function selectCategory(key: TorrentFilter) {
+function selectStatus(key: TorrentFilter) {
   store.setFilter(key)
+}
+
+function selectCategory(cat: string) {
+  // 点击同一个分类时取消选中
+  if (cat === '__uncategorized__') {
+    store.activeCategory = store.activeCategory === '__uncategorized__' ? '' : '__uncategorized__'
+  } else {
+    store.activeCategory = store.activeCategory === cat ? '' : cat
+  }
 }
 
 function selectTag(tag: string) {
@@ -58,6 +67,94 @@ async function onTagContextMenu(e: MouseEvent, tag: string) {
     toast.add({ title: '删除失败', color: 'error' })
   }
 }
+
+// ===== 分类管理 =====
+
+/** 分类编辑弹窗状态 */
+const categoryModal = ref({
+  open: false,
+  mode: 'create' as 'create' | 'edit',
+  name: '',
+  savePath: '',
+  originalName: '',
+})
+const categorySaving = ref(false)
+
+function openCreateCategory() {
+  categoryModal.value = {
+    open: true,
+    mode: 'create',
+    name: '',
+    savePath: '',
+    originalName: '',
+  }
+}
+
+function openEditCategory(name: string, savePath: string) {
+  categoryModal.value = {
+    open: true,
+    mode: 'edit',
+    name,
+    savePath,
+    originalName: name,
+  }
+}
+
+async function saveCategory() {
+  const { mode, name, savePath, originalName } = categoryModal.value
+  if (!name.trim()) {
+    toast.add({ title: '分类名称不能为空', color: 'warning' })
+    return
+  }
+  categorySaving.value = true
+  try {
+    if (mode === 'create') {
+      await store.createCategory({ category: name.trim(), savePath: savePath || undefined })
+      toast.add({ title: '分类已创建', color: 'success' })
+    } else {
+      await store.editCategory({ category: name.trim(), savePath: savePath || undefined })
+      toast.add({ title: '分类已更新', color: 'success' })
+    }
+    categoryModal.value.open = false
+  } catch {
+    toast.add({ title: mode === 'create' ? '创建失败' : '更新失败', color: 'error' })
+  } finally {
+    categorySaving.value = false
+  }
+}
+
+/** 右键分类弹出菜单 */
+async function onCategoryContextMenu(e: MouseEvent, name: string, savePath: string) {
+  e.preventDefault()
+  // 使用确认弹窗简单处理：编辑 or 删除
+  const confirmed = await confirmDialog.confirm({
+    title: '分类操作',
+    description: `分类「${name}」— 点击确认编辑，或点击删除移除该分类。`,
+    confirmText: '编辑',
+    cancelText: '取消',
+    variant: 'default',
+  })
+  if (confirmed) {
+    openEditCategory(name, savePath)
+  }
+}
+
+/** 删除分类 */
+async function deleteCategoryAction(name: string) {
+  const confirmed = await confirmDialog.confirm({
+    title: '删除分类',
+    description: `确认删除分类「${name}」？该分类下的种子将变为未分类。`,
+    confirmText: '确认删除',
+    variant: 'error',
+  })
+  if (!confirmed) return
+  try {
+    await store.deleteCategory(name)
+    toast.add({ title: '分类已删除', color: 'success' })
+  } catch {
+    toast.add({ title: '删除失败', color: 'error' })
+  }
+}
 </script>
 
 <template>
@@ -75,43 +172,98 @@ async function onTagContextMenu(e: MouseEvent, tag: string) {
       <span v-if="!collapsed" class="text-lg font-bold tracking-tight">Tide</span>
     </div>
 
-    <!-- 分类列表 -->
+    <!-- 状态列表 -->
     <div class="py-2 px-3" :class="collapsed ? 'px-0' : ''">
       <div
         v-if="!collapsed"
         class="px-2.5 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-[0.6px] text-muted"
       >
-        分类
+        状态
       </div>
       <nav class="flex flex-col gap-0.5">
         <button
-          v-for="cat in categories"
-          :key="cat.key"
+          v-for="item in statusItems"
+          :key="item.key"
           class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
           :class="[
-            store.filter === cat.key ? 'bg-primary/15 text-primary' : 'text-default',
+            store.filter === item.key ? 'bg-primary/15 text-primary' : 'text-default',
             collapsed ? 'justify-center py-2.5' : '',
           ]"
-          :title="collapsed ? cat.label : undefined"
-          @click="selectCategory(cat.key)"
+          :title="collapsed ? item.label : undefined"
+          @click="selectStatus(item.key)"
         >
           <span
             class="grid flex-shrink-0 place-items-center"
-            :class="store.filter === cat.key ? 'text-primary' : 'text-muted'"
+            :class="store.filter === item.key ? 'text-primary' : 'text-muted'"
           >
-            <UIcon :name="cat.icon" class="size-[18px]" />
+            <UIcon :name="item.icon" class="size-[18px]" />
           </span>
-          <span v-if="!collapsed" class="flex-1 truncate">{{ cat.label }}</span>
-          <span v-if="!collapsed" class="text-xs tabular-nums text-muted">{{ store.counts[cat.key] ?? 0 }}</span>
+          <span v-if="!collapsed" class="flex-1 truncate">{{ item.label }}</span>
+          <span v-if="!collapsed" class="text-xs tabular-nums text-muted">{{ store.counts[item.key] ?? 0 }}</span>
           <UBadge
-            v-else-if="(store.counts[cat.key] ?? 0) > 0"
-            :label="formatCount(store.counts[cat.key] ?? 0)"
+            v-else-if="(store.counts[item.key] ?? 0) > 0"
+            :label="formatCount(store.counts[item.key] ?? 0)"
             color="primary"
             size="sm"
             class="absolute right-1 top-0.5"
           />
         </button>
       </nav>
+    </div>
+
+    <!-- 分类列表（qBittorrent 分类） -->
+    <div v-if="!collapsed" class="flex min-h-0 flex-col px-3 py-2">
+      <div class="flex items-center justify-between px-2.5 pb-1.5 pt-2">
+        <span class="text-[11px] font-semibold uppercase tracking-[0.6px] text-muted">分类</span>
+        <UButton
+          icon="i-lucide-plus"
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          aria-label="新建分类"
+          @click="openCreateCategory"
+        />
+      </div>
+      <div class="min-h-0 max-h-[200px] overflow-y-auto">
+        <nav class="flex flex-col gap-0.5">
+          <!-- 未分类 -->
+          <button
+            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
+            :class="store.activeCategory === '__uncategorized__' ? 'bg-primary/15 text-primary' : 'text-default'"
+            @click="selectCategory('__uncategorized__')"
+            @contextmenu.prevent="onCategoryContextMenu($event, '', '')"
+          >
+            <span
+              class="grid flex-shrink-0 place-items-center"
+              :class="store.activeCategory === '__uncategorized__' ? 'text-primary' : 'text-muted'"
+            >
+              <UIcon name="i-lucide-folder-question" class="size-[16px]" />
+            </span>
+            <span class="flex-1 truncate text-[13px]">未分类</span>
+            <span class="text-xs tabular-nums text-muted">{{ store.uncategorizedCount }}</span>
+          </button>
+          <!-- 已有分类 -->
+          <button
+            v-for="cat in store.categories"
+            :key="cat.name"
+            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
+            :class="store.activeCategory === cat.name ? 'bg-primary/15 text-primary' : 'text-default'"
+            @click="selectCategory(cat.name)"
+            @contextmenu.prevent="onCategoryContextMenu($event, cat.name, cat.savePath)"
+          >
+            <span
+              class="grid flex-shrink-0 place-items-center"
+              :class="store.activeCategory === cat.name ? 'text-primary' : 'text-muted'"
+            >
+              <UIcon name="i-lucide-folder" class="size-[16px]" />
+            </span>
+            <span class="flex-1 truncate text-[13px]">{{ cat.name }}</span>
+            <span class="text-xs tabular-nums text-muted">
+              {{ store.categoryCounts[cat.name] ?? 0 }}
+            </span>
+          </button>
+        </nav>
+      </div>
     </div>
 
     <!-- 标签列表 -->
@@ -183,6 +335,51 @@ async function onTagContextMenu(e: MouseEvent, tag: string) {
               @click="confirmDialog.handleConfirm()"
             >
               {{ confirmDialog.options.value.confirmText || '确认' }}
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- 分类编辑/创建弹窗 -->
+    <UModal v-model:open="categoryModal.open" :title="categoryModal.mode === 'create' ? '新建分类' : '编辑分类'">
+      <template #body>
+        <div class="flex flex-col gap-4">
+          <UFormField label="分类名称" required>
+            <UInput
+              v-model="categoryModal.name"
+              placeholder="输入分类名称"
+              class="w-full"
+            />
+          </UFormField>
+          <UFormField label="保存路径">
+            <UInput
+              v-model="categoryModal.savePath"
+              placeholder="留空使用默认路径"
+              class="w-full"
+            />
+          </UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex justify-between gap-2 w-full">
+          <UButton
+            v-if="categoryModal.mode === 'edit'"
+            color="error"
+            variant="soft"
+            icon="i-lucide-trash"
+            @click="deleteCategoryAction(categoryModal.originalName); categoryModal.open = false"
+          >
+            删除
+          </UButton>
+          <div class="flex gap-2 ml-auto">
+            <UButton color="neutral" variant="ghost" @click="() => { categoryModal.open = false }">取消</UButton>
+            <UButton
+              color="primary"
+              :loading="categorySaving"
+              @click="saveCategory"
+            >
+              {{ categoryModal.mode === 'create' ? '创建' : '保存' }}
             </UButton>
           </div>
         </div>

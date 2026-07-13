@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { Torrent } from '@/types/qbittorrent'
 import { useTorrentListStore } from '@/stores/torrentList'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
@@ -35,7 +35,7 @@ const isPaused = computed(() => {
 /** 边界处理，确保菜单不超出视口右侧 */
 const adjustedX = computed(() => Math.min(props.x, window.innerWidth - 200))
 /** 边界处理，确保菜单不超出视口底部 */
-const adjustedY = computed(() => Math.min(props.y, window.innerHeight - 320))
+const adjustedY = computed(() => Math.min(props.y, window.innerHeight - 360))
 
 /** 查看详情 */
 function handleShowDetail() {
@@ -107,11 +107,54 @@ async function handleCopyName() {
   emit('close')
 }
 
+/** 导出 .torrent 文件 */
+async function handleExport() {
+  if (!props.torrent) return
+  try {
+    const blob = await store.exportTorrentFile(props.torrent.hash)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${props.torrent.name}.torrent`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.add({ title: '导出成功', color: 'success' })
+  } catch {
+    toast.add({ title: '导出失败', color: 'error' })
+  }
+  emit('close')
+}
+
 /** 添加标签 */
 function handleAddTag() {
   if (!props.torrent) return
   emit('add-tag', props.torrent.hash)
   emit('close')
+}
+
+// ===== 重命名弹窗 =====
+const renameModal = ref({ open: false, hash: '', name: '', saving: false })
+
+function handleRename() {
+  if (!props.torrent) return
+  renameModal.value = { open: true, hash: props.torrent.hash, name: props.torrent.name, saving: false }
+  emit('close')
+}
+
+async function saveRename() {
+  if (!renameModal.value.hash || !renameModal.value.name.trim()) return
+  renameModal.value.saving = true
+  try {
+    await store.renameTorrentAction(renameModal.value.hash, renameModal.value.name.trim())
+    toast.add({ title: '重命名成功', color: 'success' })
+    renameModal.value.open = false
+  } catch {
+    toast.add({ title: '重命名失败', color: 'error' })
+  } finally {
+    renameModal.value.saving = false
+  }
 }
 
 /** 删除种子（需确认） */
@@ -210,6 +253,15 @@ async function handleDelete() {
           <span>复制名称</span>
         </button>
 
+        <!-- 导出 .torrent -->
+        <button
+          class="flex items-center gap-2.5 w-full px-3 py-1.5 text-sm text-left cursor-pointer hover:bg-elevated transition-colors"
+          @click="handleExport"
+        >
+          <UIcon name="i-lucide-download" class="size-4 shrink-0" />
+          <span>导出 .torrent</span>
+        </button>
+
         <!-- 分隔线 -->
         <div class="h-px bg-default my-1" />
 
@@ -221,6 +273,18 @@ async function handleDelete() {
           <UIcon name="i-lucide-tag" class="size-4 shrink-0" />
           <span>添加标签</span>
         </button>
+
+        <!-- 重命名 -->
+        <button
+          class="flex items-center gap-2.5 w-full px-3 py-1.5 text-sm text-left cursor-pointer hover:bg-elevated transition-colors"
+          @click="handleRename"
+        >
+          <UIcon name="i-lucide-pencil" class="size-4 shrink-0" />
+          <span>重命名</span>
+        </button>
+
+        <!-- 分隔线 -->
+        <div class="h-px bg-default my-1" />
 
         <!-- 删除种子（红色） -->
         <button
@@ -256,6 +320,24 @@ async function handleDelete() {
             {{ confirmDialog.options.value.confirmText || '确认' }}
           </UButton>
         </div>
+      </div>
+    </template>
+  </UModal>
+
+  <!-- 重命名弹窗 -->
+  <UModal v-model:open="renameModal.open" title="重命名种子">
+    <template #body>
+      <UInput
+        v-model="renameModal.name"
+        placeholder="输入新名称"
+        class="w-full"
+        @keyup.enter="saveRename"
+      />
+    </template>
+    <template #footer>
+      <div class="flex justify-end gap-2">
+        <UButton color="neutral" variant="ghost" @click="() => { renameModal.open = false }">取消</UButton>
+        <UButton color="primary" :loading="renameModal.saving" @click="saveRename">确认</UButton>
       </div>
     </template>
   </UModal>

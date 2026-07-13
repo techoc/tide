@@ -21,6 +21,10 @@ const { show: addModalShow, open: openAdd } = useAddTorrentModal()
 usePolling(store.fetchTransfer, 2000)
 // 标签列表（低频）
 usePolling(store.fetchTags, 30000)
+// 分类列表（低频）
+usePolling(store.fetchCategories, 30000)
+// 备选限速状态（低频）
+usePolling(store.fetchAltSpeedMode, 10000)
 </script>
 
 <template>

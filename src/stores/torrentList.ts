@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed, shallowRef } from 'vue'
-import type { Torrent, TorrentFilter, TorrentState, TorrentSort } from '@/types/qbittorrent'
+import type { Torrent, TorrentCategory, TorrentFilter, TorrentState, TorrentSort, CategoryParams } from '@/types/qbittorrent'
 import {
   getTorrents,
   pauseTorrents,
@@ -11,8 +11,18 @@ import {
   removeTags,
   deleteTags as deleteTagsApi,
   forceStartTorrents,
+  getCategories,
+  createCategory as createCategoryApi,
+  editCategory as editCategoryApi,
+  removeCategories as removeCategoriesApi,
+  setTorrentsCategory,
+  setTorrentsDownloadLimit,
+  setTorrentsUploadLimit,
+  setTorrentsLocation,
+  exportTorrent,
+  renameTorrent,
 } from '@/api/modules/torrents'
-import { getTransferInfo, type TransferInfo } from '@/api/modules/app'
+import { getTransferInfo, toggleAlternativeSpeedLimits, getAlternativeSpeedLimitsMode, type TransferInfo } from '@/api/modules/app'
 
 /** 判断种子是否匹配某个筛选分类 */
 function matchesFilter(t: Torrent, filter: TorrentFilter): boolean {
@@ -72,6 +82,12 @@ export const useTorrentListStore = defineStore('torrentList', () => {
   const activeTag = ref('')
   /** 搜索关键词（按 name 模糊匹配，不区分大小写） */
   const searchQuery = ref('')
+  /** 分类列表 */
+  const categories = ref<TorrentCategory[]>([])
+  /** 当前选中分类（空字符串表示"全部"，特殊值 '__uncategorized__' 表示未分类） */
+  const activeCategory = ref('')
+  /** 备选速度限制是否已启用 */
+  const altSpeedEnabled = ref(false)
   /** 全局传输信息 */
   const transfer = ref<TransferInfo>({
     dl_info_speed: 0,
@@ -121,6 +137,19 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     return result
   })
 
+  /** 每个分类下的种子数量（含未分类计数，key 为分类名，'' 代表未分类） */
+  const categoryCounts = computed<Record<string, number>>(() => {
+    const result: Record<string, number> = {}
+    for (const t of torrents.value) {
+      const cat = t.category || ''
+      result[cat] = (result[cat] ?? 0) + 1
+    }
+    return result
+  })
+
+  /** 未分类种子数量 */
+  const uncategorizedCount = computed(() => categoryCounts.value[''] ?? 0)
+
   /** 所有种子的已下载总量（downloaded 之和） */
   const totalDownloaded = computed(() =>
     torrents.value.reduce((sum, t) => sum + t.downloaded, 0),
@@ -148,7 +177,7 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     () => torrents.value.filter((t) => matchesFilter(t, 'completed')).length,
   )
 
-  /** 按分类 + 标签 + 搜索关键词筛选后的列表 */
+  /** 按分类 + 标签 + 分类筛选 + 搜索关键词筛选后的列表 */
   const filteredTorrents = computed<Torrent[]>(() => {
     let list = torrents.value
     if (filter.value !== 'all') {
@@ -161,6 +190,12 @@ export const useTorrentListStore = defineStore('torrentList', () => {
           .map((s) => s.trim())
           .includes(activeTag.value),
       )
+    }
+    // 分类筛选：空字符串 = 全部，'__uncategorized__' = 未分类，其他 = 指定分类
+    if (activeCategory.value === '__uncategorized__') {
+      list = list.filter((t) => !t.category)
+    } else if (activeCategory.value) {
+      list = list.filter((t) => t.category === activeCategory.value)
     }
     // 搜索过滤：按 name 模糊匹配，不区分大小写
     if (searchQuery.value) {
@@ -221,6 +256,30 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     } catch {
       // 忽略
     }
+  }
+
+  /** 拉取分类列表 */
+  async function fetchCategories(): Promise<void> {
+    try {
+      categories.value = await getCategories()
+    } catch {
+      // 忽略
+    }
+  }
+
+  /** 拉取备选限速状态 */
+  async function fetchAltSpeedMode(): Promise<void> {
+    try {
+      altSpeedEnabled.value = await getAlternativeSpeedLimitsMode()
+    } catch {
+      // 忽略
+    }
+  }
+
+  /** 切换备选限速 */
+  async function toggleAltSpeed(): Promise<void> {
+    await toggleAlternativeSpeedLimits()
+    await fetchAltSpeedMode()
   }
 
   /** 切换筛选分类 */
@@ -318,6 +377,76 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     await fetchTorrents()
   }
 
+  // ===== 分类管理 actions =====
+
+  /** 创建分类 */
+  async function createCategory(params: CategoryParams): Promise<void> {
+    await createCategoryApi(params)
+    await fetchCategories()
+  }
+
+  /** 编辑分类 */
+  async function editCategory(params: CategoryParams): Promise<void> {
+    await editCategoryApi(params)
+    await fetchCategories()
+    await fetchTorrents()
+  }
+
+  /** 删除分类 */
+  async function deleteCategory(name: string): Promise<void> {
+    await removeCategoriesApi([name])
+    if (activeCategory.value === name) activeCategory.value = ''
+    await fetchCategories()
+    await fetchTorrents()
+  }
+
+  /** 设置种子的分类（默认选中种子，可传入指定 hashes） */
+  async function setTorrentCategory(category: string, hashes?: string[]): Promise<void> {
+    const targetHashes = hashes ?? selectedArray()
+    if (!targetHashes.length) return
+    await setTorrentsCategory(targetHashes, category)
+    await fetchTorrents()
+  }
+
+  // ===== 限速与位置 actions =====
+
+  /** 设置下载限速（单位 bytes/s，0 = 不限速） */
+  async function setDownloadLimit(limit: number, hashes?: string[]): Promise<void> {
+    const targetHashes = hashes ?? selectedArray()
+    if (!targetHashes.length) return
+    await setTorrentsDownloadLimit(targetHashes, limit)
+    await fetchTorrents()
+  }
+
+  /** 设置上传限速（单位 bytes/s，0 = 不限速） */
+  async function setUploadLimit(limit: number, hashes?: string[]): Promise<void> {
+    const targetHashes = hashes ?? selectedArray()
+    if (!targetHashes.length) return
+    await setTorrentsUploadLimit(targetHashes, limit)
+    await fetchTorrents()
+  }
+
+  /** 移动种子保存路径 */
+  async function setTorrentLocation(location: string, hashes?: string[]): Promise<void> {
+    const targetHashes = hashes ?? selectedArray()
+    if (!targetHashes.length) return
+    await setTorrentsLocation(targetHashes, location)
+    await fetchTorrents()
+  }
+
+  // ===== 导出与重命名 actions =====
+
+  /** 导出 .torrent 文件（返回 Blob） */
+  async function exportTorrentFile(hash: string): Promise<Blob> {
+    return exportTorrent(hash)
+  }
+
+  /** 重命名种子 */
+  async function renameTorrentAction(hash: string, name: string): Promise<void> {
+    await renameTorrent(hash, name)
+    await fetchTorrents()
+  }
+
   /** 清空状态（登出时调用） */
   function reset(): void {
     torrents.value = []
@@ -326,6 +455,9 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     activeTag.value = ''
     searchQuery.value = ''
     filter.value = 'all'
+    categories.value = []
+    activeCategory.value = ''
+    altSpeedEnabled.value = false
   }
 
   return {
@@ -338,10 +470,15 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     tags,
     activeTag,
     searchQuery,
+    categories,
+    activeCategory,
+    altSpeedEnabled,
     transfer,
     counts,
     totalSize,
     tagCounts,
+    categoryCounts,
+    uncategorizedCount,
     totalDownloaded,
     seedingCount,
     downloadingCount,
@@ -355,6 +492,9 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     fetchTorrents,
     fetchTransfer,
     fetchTags,
+    fetchCategories,
+    fetchAltSpeedMode,
+    toggleAltSpeed,
     setFilter,
     setSort,
     toggleSelect,
@@ -367,6 +507,15 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     addTagsToSelected,
     removeTagsFromSelected,
     deleteTag,
+    createCategory,
+    editCategory,
+    deleteCategory,
+    setTorrentCategory,
+    setDownloadLimit,
+    setUploadLimit,
+    setTorrentLocation,
+    exportTorrentFile,
+    renameTorrentAction,
     reset,
   }
 })

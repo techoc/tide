@@ -33,6 +33,53 @@ const store = useTorrentListStore()
 const toast = useToast()
 const confirmDialog = useConfirmDialog()
 
+// ===== 列配置（显示/隐藏） =====
+
+const HIDDEN_COLUMNS_KEY = 'tide.table.hiddenColumns'
+
+/** 可隐藏的列配置（select/name/progress/actions 不可隐藏） */
+const hideableColumns: { id: string; label: string }[] = [
+  { id: 'size', label: '大小' },
+  { id: 'dlspeed', label: '下载速度' },
+  { id: 'upspeed', label: '上传速度' },
+  { id: 'eta', label: '剩余时间' },
+  { id: 'state', label: '状态' },
+  { id: 'ratio', label: '比率' },
+  { id: 'tags', label: '标签' },
+]
+
+/** 被隐藏的列 ID 集合（从 localStorage 读取初始值） */
+const hiddenColumns = ref<Set<string>>(
+  new Set(
+    (() => {
+      try {
+        const raw = localStorage.getItem(HIDDEN_COLUMNS_KEY)
+        return raw ? (JSON.parse(raw) as string[]) : []
+      } catch {
+        return []
+      }
+    })(),
+  ),
+)
+
+/** 切换列显示/隐藏并持久化 */
+function toggleColumn(id: string) {
+  const next = new Set(hiddenColumns.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  hiddenColumns.value = next
+  localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...next]))
+}
+
+/** 列配置下拉菜单项 */
+const columnMenuItems = computed(() =>
+  hideableColumns.map((c) => ({
+    label: c.label,
+    icon: hiddenColumns.value.has(c.id) ? 'i-lucide-square' : 'i-lucide-check-square',
+    onSelect: () => toggleColumn(c.id),
+  })),
+)
+
 // ===== 行内操作下拉菜单 =====
 
 /** 暂停状态判断 */
@@ -53,8 +100,10 @@ function buildActionItems(torrent: Torrent) {
     { type: 'separator' as const },
     { label: '复制 Hash', icon: 'i-lucide-copy', onSelect: () => handleCopyHash(torrent) },
     { label: '复制名称', icon: 'i-lucide-file-copy', onSelect: () => handleCopyName(torrent) },
+    { label: '导出 .torrent', icon: 'i-lucide-download', onSelect: () => handleExport(torrent) },
     { type: 'separator' as const },
     { label: '添加标签', icon: 'i-lucide-tag', onSelect: () => emit('add-tag', torrent.hash) },
+    { label: '重命名', icon: 'i-lucide-pencil', onSelect: () => openRenameModal(torrent) },
     { type: 'separator' as const },
     { label: '删除种子', icon: 'i-lucide-trash', color: 'error' as const, onSelect: () => handleDelete(torrent) },
   ]
@@ -105,6 +154,45 @@ async function handleCopyName(torrent: Torrent) {
     toast.add({ title: '名称已复制', color: 'success' })
   } catch {
     toast.add({ title: '复制失败', color: 'error' })
+  }
+}
+
+/** 导出 .torrent 文件 */
+async function handleExport(torrent: Torrent) {
+  try {
+    const blob = await store.exportTorrentFile(torrent.hash)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${torrent.name}.torrent`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast.add({ title: '导出成功', color: 'success' })
+  } catch {
+    toast.add({ title: '导出失败', color: 'error' })
+  }
+}
+
+// ===== 重命名弹窗 =====
+const renameModal = ref({ open: false, hash: '', name: '', saving: false })
+
+function openRenameModal(torrent: Torrent) {
+  renameModal.value = { open: true, hash: torrent.hash, name: torrent.name, saving: false }
+}
+
+async function handleRename() {
+  if (!renameModal.value.hash || !renameModal.value.name.trim()) return
+  renameModal.value.saving = true
+  try {
+    await store.renameTorrentAction(renameModal.value.hash, renameModal.value.name.trim())
+    toast.add({ title: '重命名成功', color: 'success' })
+    renameModal.value.open = false
+  } catch {
+    toast.add({ title: '重命名失败', color: 'error' })
+  } finally {
+    renameModal.value.saving = false
   }
 }
 
@@ -412,6 +500,16 @@ const columns: TableColumn<Torrent>[] = [
   },
 ]
 
+/** 过滤掉被隐藏的列后的列表（select/name/progress/actions 始终显示） */
+const visibleColumns = computed(() =>
+  columns.filter((col) => {
+    const id = colKey(col)
+    // select 和 actions 列始终显示
+    if (id === 'select' || id === 'actions') return true
+    return !hiddenColumns.value.has(id ?? '')
+  }),
+)
+
 /**
  * VNodeRenderer：用于在模板中渲染由 cell / header 函数返回的 VNode 或字符串。
  * <component :is> 无法直接消费 VNode，故用此轻量函数式组件包装。
@@ -446,11 +544,28 @@ const virtualItems = computed(() => {
 
 <template>
   <div ref="scrollContainer" class="torrent-table-wrap h-full overflow-auto relative">
+    <!-- 列配置按钮（浮动在右上角） -->
+    <UDropdownMenu
+      :items="columnMenuItems"
+      mode="click"
+      :ui="{ content: 'min-w-[160px]' }"
+    >
+      <UButton
+        icon="i-lucide-settings-2"
+        color="neutral"
+        variant="ghost"
+        size="xs"
+        class="absolute right-1 top-1 z-30 opacity-60 hover:opacity-100"
+        aria-label="列配置"
+        title="列配置"
+      />
+    </UDropdownMenu>
+
     <table class="w-full">
       <thead class="sticky top-0 z-10 bg-default">
         <tr class="flex border-b border-default">
           <th
-            v-for="col in columns"
+            v-for="col in visibleColumns"
             :key="colKey(col)"
             :style="cellStyle(col)"
             class="px-3 py-2 text-xs font-medium text-muted text-left select-none overflow-hidden"
@@ -486,7 +601,7 @@ const virtualItems = computed(() => {
           @contextmenu.prevent="onContextMenu($event, item.torrent)"
         >
           <td
-            v-for="col in columns"
+            v-for="col in visibleColumns"
             :key="colKey(col)"
             :style="cellStyle(col)"
             class="px-3 py-2 text-sm flex items-center overflow-hidden"
@@ -538,6 +653,24 @@ const virtualItems = computed(() => {
               {{ confirmDialog.options.value.confirmText || '确认' }}
             </UButton>
           </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- 重命名弹窗 -->
+    <UModal v-model:open="renameModal.open" title="重命名种子">
+      <template #body>
+        <UInput
+          v-model="renameModal.name"
+          placeholder="输入新名称"
+          class="w-full"
+          @keyup.enter="handleRename"
+        />
+      </template>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <UButton color="neutral" variant="ghost" @click="() => { renameModal.open = false }">取消</UButton>
+          <UButton color="primary" :loading="renameModal.saving" @click="handleRename">确认</UButton>
         </div>
       </template>
     </UModal>

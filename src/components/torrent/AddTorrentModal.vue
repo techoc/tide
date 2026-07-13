@@ -35,6 +35,12 @@ const tabItems = [
   { label: '种子文件', icon: 'i-lucide-cloud-upload', value: 'file', slot: 'file' },
 ]
 
+// 分类下拉选项（从 store 获取已有分类）
+const categoryItems = computed(() => [
+  { label: '不指定分类', value: '' },
+  ...store.categories.map((c) => ({ label: c.name, value: c.name })),
+])
+
 const canSubmit = computed(() => {
   if (tab.value === 'link') return magnetLinks.value.trim().length > 0
   return fileList.value.length > 0
@@ -215,7 +221,12 @@ async function submit() {
             </div>
             <div class="flex flex-col gap-1.5">
               <label class="text-xs text-muted">分类</label>
-              <UInput v-model="category" placeholder="可选" class="w-full" />
+              <USelect
+                v-model="category"
+                :items="categoryItems"
+                placeholder="选择分类"
+                class="w-full"
+              />
             </div>
             <div class="flex flex-col gap-1.5">
               <label class="text-xs text-muted">标签</label>

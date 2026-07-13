@@ -1,7 +1,9 @@
 import http, { form } from '@/api'
 import type {
   AddTorrentParams,
+  CategoryParams,
   Torrent,
+  TorrentCategory,
   TorrentFile,
   TorrentFilter,
   TorrentPeers,
@@ -141,4 +143,65 @@ export async function setFilePriority(
 export async function getSyncMaindata(rid?: number): Promise<unknown> {
   const res = await http.get('/sync/maindata', { params: { rid } })
   return res.data
+}
+
+// ===== 分类管理 =====
+
+/** 获取所有分类（返回对象，key 为分类名） */
+export async function getCategories(): Promise<TorrentCategory[]> {
+  const res = await http.get<Record<string, TorrentCategory>>('/torrents/categories')
+  return Object.values(res.data)
+}
+
+/** 创建分类 */
+export async function createCategory(params: CategoryParams): Promise<void> {
+  await http.post('/torrents/createCategory', form({ category: params.category, savePath: params.savePath }))
+}
+
+/** 编辑分类 */
+export async function editCategory(params: CategoryParams): Promise<void> {
+  await http.post('/torrents/editCategory', form({ category: params.category, savePath: params.savePath }))
+}
+
+/** 删除分类（removeCategories 接收逗号分隔的分类名） */
+export async function removeCategories(categories: string[]): Promise<void> {
+  await http.post('/torrents/removeCategories', form({ categories: categories.join(',') }))
+}
+
+/** 设置种子的分类 */
+export async function setTorrentsCategory(hashes: string[], category: string): Promise<void> {
+  await http.post('/torrents/setCategory', form({ hashes: hashes.join('|'), category }))
+}
+
+// ===== 限速与位置 =====
+
+/** 设置种子下载限速（单位 bytes/s，0 表示不限速） */
+export async function setTorrentsDownloadLimit(hashes: string[], limit: number): Promise<void> {
+  await http.post('/torrents/setDownloadLimit', form({ hashes: hashes.join('|'), limit }))
+}
+
+/** 设置种子上传限速（单位 bytes/s，0 表示不限速） */
+export async function setTorrentsUploadLimit(hashes: string[], limit: number): Promise<void> {
+  await http.post('/torrents/setUploadLimit', form({ hashes: hashes.join('|'), limit }))
+}
+
+/** 设置种子保存路径（move 操作） */
+export async function setTorrentsLocation(hashes: string[], location: string): Promise<void> {
+  await http.post('/torrents/setLocation', form({ hashes: hashes.join('|'), location }))
+}
+
+// ===== 导出与重命名 =====
+
+/** 导出 .torrent 文件（返回 Blob） */
+export async function exportTorrent(hash: string): Promise<Blob> {
+  const res = await http.get('/torrents/export', {
+    params: { hash },
+    responseType: 'blob',
+  })
+  return res.data as unknown as Blob
+}
+
+/** 重命名种子 */
+export async function renameTorrent(hash: string, name: string): Promise<void> {
+  await http.post('/torrents/rename', form({ hash, name }))
 }

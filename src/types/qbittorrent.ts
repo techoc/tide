@@ -159,3 +159,15 @@ export interface AddTorrentParams {
   sequentialDownload?: boolean
   firstLastPiecePrio?: boolean
 }
+
+/** 分类信息（/torrents/categories 返回项） */
+export interface TorrentCategory {
+  name: string
+  savePath: string
+}
+
+/** 创建/编辑分类参数 */
+export interface CategoryParams {
+  category: string
+  savePath?: string
+}
