@@ -134,6 +134,10 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     dl_info_data: 0,
     up_info_speed: 0,
     up_info_data: 0,
+    dl_rate_limit: 0,
+    up_rate_limit: 0,
+    dht_nodes: 0,
+    connection_status: 'disconnected',
   })
 
   /** 各分类数量统计 */

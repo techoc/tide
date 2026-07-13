@@ -42,8 +42,11 @@ const router = useRouter()
 const collapsed = computed(() => !props.forceExpanded && settings.sidebarCollapsed)
 const isDashboard = computed(() => router.currentRoute.value.name === 'dashboard')
 
-/** 底部导航项：统计 / 设置 */
+/** 独立功能页 */
 const bottomItems = [
+  { to: '/search', label: '资源搜索', icon: 'i-lucide-search' },
+  { to: '/rss', label: 'RSS 订阅', icon: 'i-lucide-rss' },
+  { to: '/logs', label: '运行日志', icon: 'i-lucide-scroll-text' },
   { to: '/stats', label: '统计概览', icon: 'i-lucide-bar-chart-3' },
   { to: '/settings', label: '设置', icon: 'i-lucide-settings' },
 ]
@@ -143,7 +146,7 @@ function openEditCategory(name: string, savePath: string) {
 }
 
 async function saveCategory() {
-  const { mode, name, savePath, originalName } = categoryModal.value
+  const { mode, name, savePath } = categoryModal.value
   if (!name.trim()) {
     toast.add({ title: '分类名称不能为空', color: 'warning' })
     return
@@ -228,33 +231,38 @@ async function deleteCategoryAction(name: string) {
         状态
       </div>
       <nav class="flex flex-col gap-0.5">
-        <button
+        <UTooltip
           v-for="item in statusItems"
           :key="item.key"
-          class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-          :class="[
-            isStatusActive(item.key) ? 'bg-primary/15 text-primary' : 'text-default',
-            collapsed ? 'justify-center py-2.5' : '',
-          ]"
-          :title="collapsed ? item.label : undefined"
-          @click="selectStatus(item.key)"
+          :text="item.label"
+          :disabled="!collapsed"
+          :content="{ side: 'right', sideOffset: 10 }"
         >
-          <span
-            class="grid flex-shrink-0 place-items-center"
-            :class="isStatusActive(item.key) ? 'text-primary' : 'text-muted'"
+          <button
+            class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            :class="[
+              isStatusActive(item.key) ? 'bg-primary/15 text-primary' : 'text-default',
+              collapsed ? 'justify-center py-2.5' : '',
+            ]"
+            @click="selectStatus(item.key)"
           >
-            <UIcon :name="item.icon" class="size-[18px]" />
-          </span>
-          <span v-if="!collapsed" class="flex-1 truncate">{{ item.label }}</span>
-          <span v-if="!collapsed" class="text-xs tabular-nums text-muted">{{ store.counts[item.key] ?? 0 }}</span>
-          <UBadge
-            v-else-if="(store.counts[item.key] ?? 0) > 0"
-            :label="formatCount(store.counts[item.key] ?? 0)"
-            color="primary"
-            size="sm"
-            class="absolute right-1 top-0.5"
-          />
-        </button>
+            <span
+              class="grid flex-shrink-0 place-items-center"
+              :class="isStatusActive(item.key) ? 'text-primary' : 'text-muted'"
+            >
+              <UIcon :name="item.icon" class="size-[18px]" />
+            </span>
+            <span v-if="!collapsed" class="flex-1 truncate">{{ item.label }}</span>
+            <span v-if="!collapsed" class="text-xs tabular-nums text-muted">{{ store.counts[item.key] ?? 0 }}</span>
+            <UBadge
+              v-else-if="(store.counts[item.key] ?? 0) > 0"
+              :label="formatCount(store.counts[item.key] ?? 0)"
+              color="primary"
+              size="sm"
+              class="absolute right-1 top-0.5"
+            />
+          </button>
+        </UTooltip>
       </nav>
       </section>
 
@@ -347,7 +355,7 @@ async function deleteCategoryAction(name: string) {
       </section>
     </div>
 
-    <!-- 底部导航：统计 / 设置 -->
+    <!-- 底部功能导航 -->
     <div class="flex flex-shrink-0 flex-col gap-0.5 border-t border-default px-3 py-2" :class="collapsed ? 'items-center' : ''">
       <RouterLink
         v-for="item in bottomItems"
@@ -356,23 +364,28 @@ async function deleteCategoryAction(name: string) {
         custom
         v-slot="{ isActive, navigate }"
       >
-        <button
-          class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-          :class="[
-            isActive ? 'bg-primary/15 text-primary' : 'text-default',
-            collapsed ? 'justify-center py-2.5' : '',
-          ]"
-          :title="collapsed ? item.label : undefined"
-          @click="handleBottomNavigate($event, navigate)"
+        <UTooltip
+          :text="item.label"
+          :disabled="!collapsed"
+          :content="{ side: 'right', sideOffset: 10 }"
         >
-          <span
-            class="grid flex-shrink-0 place-items-center"
-            :class="isActive ? 'text-primary' : 'text-muted'"
+          <button
+            class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            :class="[
+              isActive ? 'bg-primary/15 text-primary' : 'text-default',
+              collapsed ? 'justify-center py-2.5' : '',
+            ]"
+            @click="handleBottomNavigate($event, navigate)"
           >
-            <UIcon :name="item.icon" class="size-[18px]" />
-          </span>
-          <span v-if="!collapsed" class="flex-1 truncate">{{ item.label }}</span>
-        </button>
+            <span
+              class="grid flex-shrink-0 place-items-center"
+              :class="isActive ? 'text-primary' : 'text-muted'"
+            >
+              <UIcon :name="item.icon" class="size-[18px]" />
+            </span>
+            <span v-if="!collapsed" class="flex-1 truncate">{{ item.label }}</span>
+          </button>
+        </UTooltip>
       </RouterLink>
     </div>
 

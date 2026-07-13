@@ -7,8 +7,13 @@ import type {
   TorrentFile,
   TorrentFilter,
   TorrentPeers,
+  TorrentPieceState,
+  TorrentProperties,
+  TorrentShareLimits,
   TorrentSort,
   TorrentTracker,
+  TorrentWebSeed,
+  SSLParameters,
 } from '@/types/qbittorrent'
 
 /** 获取种子列表 */
@@ -19,6 +24,9 @@ export async function getTorrents(params: {
   category?: string
   tag?: string
   hashes?: string
+  private?: boolean
+  includeFiles?: boolean
+  includeTrackers?: boolean
   limit?: number
   offset?: number
 } = {}): Promise<Torrent[]> {
@@ -35,17 +43,43 @@ export async function addTorrent(params: AddTorrentParams): Promise<void> {
     for (const f of files) fd.append('torrents', f, f.name)
   }
   if (params.savepath) fd.append('savepath', params.savepath)
+  if (params.downloadPath) fd.append('downloadPath', params.downloadPath)
+  if (params.useDownloadPath !== undefined) fd.append('useDownloadPath', String(params.useDownloadPath))
   if (params.cookie) fd.append('cookie', params.cookie)
   if (params.name) fd.append('rename', params.name)
   if (params.category) fd.append('category', params.category)
   if (params.tags) fd.append('tags', params.tags)
   if (params.skip_checking) fd.append('skip_checking', 'true')
-  if (params.paused) fd.append('paused', 'true')
+  if (params.paused || params.stopped) {
+    fd.append('paused', 'true')
+    fd.append('stopped', 'true')
+  }
+  if (params.forced) fd.append('forced', 'true')
+  if (params.addToTopOfQueue !== undefined) fd.append('addToTopOfQueue', String(params.addToTopOfQueue))
   if (params.root_folder !== undefined) fd.append('root_folder', String(params.root_folder))
-  if (params.downloadLimit != null) fd.append('downloadLimit', String(params.downloadLimit))
-  if (params.uploadLimit != null) fd.append('uploadLimit', String(params.uploadLimit))
+  if (params.downloadLimit != null) {
+    fd.append('downloadLimit', String(params.downloadLimit))
+    fd.append('dlLimit', String(params.downloadLimit))
+  }
+  if (params.uploadLimit != null) {
+    fd.append('uploadLimit', String(params.uploadLimit))
+    fd.append('upLimit', String(params.uploadLimit))
+  }
   if (params.sequentialDownload) fd.append('sequentialDownload', 'true')
   if (params.firstLastPiecePrio) fd.append('firstLastPiecePrio', 'true')
+  if (params.autoTMM !== undefined) fd.append('autoTMM', String(params.autoTMM))
+  if (params.contentLayout) fd.append('contentLayout', params.contentLayout)
+  if (params.stopCondition) fd.append('stopCondition', params.stopCondition)
+  if (params.ratioLimit != null) fd.append('ratioLimit', String(params.ratioLimit))
+  if (params.seedingTimeLimit != null) fd.append('seedingTimeLimit', String(params.seedingTimeLimit))
+  if (params.inactiveSeedingTimeLimit != null) fd.append('inactiveSeedingTimeLimit', String(params.inactiveSeedingTimeLimit))
+  if (params.shareLimitsMode) fd.append('shareLimitsMode', params.shareLimitsMode)
+  if (params.shareLimitAction) fd.append('shareLimitAction', params.shareLimitAction)
+  if (params.filePriorities?.length) fd.append('filePriorities', params.filePriorities.join(','))
+  if (params.downloader) fd.append('downloader', params.downloader)
+  if (params.ssl_certificate) fd.append('ssl_certificate', params.ssl_certificate)
+  if (params.ssl_private_key) fd.append('ssl_private_key', params.ssl_private_key)
+  if (params.ssl_dh_params) fd.append('ssl_dh_params', params.ssl_dh_params)
 
   await http.post('/torrents/add', fd)
 }
@@ -88,6 +122,26 @@ export async function forceStartTorrents(hashes: string[], value: boolean): Prom
   await http.post('/torrents/setForceStart', form({ hashes: hashes.join('|'), value }))
 }
 
+/** 重新校验种子数据 */
+export async function recheckTorrents(hashes: string[]): Promise<void> {
+  await http.post('/torrents/recheck', form({ hashes: hashes.join('|') }))
+}
+
+/** 立即向 Tracker 重新汇报 */
+export async function reannounceTorrents(hashes: string[], urls?: string[]): Promise<void> {
+  await http.post('/torrents/reannounce', form({ hashes: hashes.join('|'), urls: urls?.join('|') }))
+}
+
+/** 切换顺序下载 */
+export async function toggleSequentialDownload(hashes: string[]): Promise<void> {
+  await http.post('/torrents/toggleSequentialDownload', form({ hashes: hashes.join('|') }))
+}
+
+/** 切换首尾块优先下载 */
+export async function toggleFirstLastPiecePriority(hashes: string[]): Promise<void> {
+  await http.post('/torrents/toggleFirstLastPiecePrio', form({ hashes: hashes.join('|') }))
+}
+
 /** 添加标签 */
 export async function addTags(hashes: string[], tags: string): Promise<void> {
   await http.post('/torrents/addTags', form({ hashes: hashes.join('|'), tags }))
@@ -110,8 +164,49 @@ export async function deleteTags(tags: string[]): Promise<void> {
 }
 
 /** 获取文件列表 */
-export async function getTorrentFiles(hash: string): Promise<TorrentFile[]> {
-  const res = await http.get<TorrentFile[]>('/torrents/files', { params: { hash } })
+export async function getTorrentFiles(hash: string, indexes?: number[]): Promise<TorrentFile[]> {
+  const res = await http.get<TorrentFile[]>('/torrents/files', {
+    params: { hash, indexes: indexes?.join('|') },
+  })
+  return res.data
+}
+
+/** 获取种子通用属性 */
+export async function getTorrentProperties(hash: string): Promise<TorrentProperties> {
+  const res = await http.get<TorrentProperties>('/torrents/properties', { params: { hash } })
+  return res.data
+}
+
+/** 获取 Web Seeds */
+export async function getTorrentWebSeeds(hash: string): Promise<TorrentWebSeed[]> {
+  const res = await http.get<TorrentWebSeed[]>('/torrents/webseeds', { params: { hash } })
+  return res.data
+}
+
+export async function addTorrentWebSeeds(hash: string, urls: string[]): Promise<void> {
+  await http.post('/torrents/addWebSeeds', form({ hash, urls: urls.join('|') }))
+}
+
+export async function editTorrentWebSeed(hash: string, oldUrl: string, newUrl: string): Promise<void> {
+  await http.post('/torrents/editWebSeed', form({ hash, origUrl: oldUrl, newUrl }))
+}
+
+export async function removeTorrentWebSeeds(hash: string, urls: string[]): Promise<void> {
+  await http.post('/torrents/removeWebSeeds', form({ hash, urls: urls.join('|') }))
+}
+
+export async function getTorrentPieceStates(hash: string): Promise<TorrentPieceState[]> {
+  const res = await http.get<TorrentPieceState[]>('/torrents/pieceStates', { params: { hash } })
+  return res.data
+}
+
+export async function getTorrentPieceHashes(hash: string): Promise<string[]> {
+  const res = await http.get<string[]>('/torrents/pieceHashes', { params: { hash } })
+  return res.data
+}
+
+export async function getTorrentPieceAvailability(hash: string): Promise<number[]> {
+  const res = await http.get<number[]>('/torrents/pieceAvailability', { params: { hash } })
   return res.data
 }
 
@@ -145,6 +240,12 @@ export async function getSyncMaindata(rid?: number): Promise<unknown> {
   return res.data
 }
 
+/** 获取符合筛选条件的种子数量（qBittorrent v5） */
+export async function getTorrentCount(params: Record<string, unknown> = {}): Promise<number> {
+  const res = await http.get<number>('/torrents/count', { params })
+  return Number(res.data)
+}
+
 // ===== 分类管理 =====
 
 /** 获取所有分类（返回对象，key 为分类名） */
@@ -155,17 +256,27 @@ export async function getCategories(): Promise<TorrentCategory[]> {
 
 /** 创建分类 */
 export async function createCategory(params: CategoryParams): Promise<void> {
-  await http.post('/torrents/createCategory', form({ category: params.category, savePath: params.savePath }))
+  await http.post('/torrents/createCategory', form({
+    category: params.category,
+    savePath: params.savePath,
+    downloadPath: params.downloadPath,
+    downloadPathEnabled: params.enable,
+  }))
 }
 
 /** 编辑分类 */
 export async function editCategory(params: CategoryParams): Promise<void> {
-  await http.post('/torrents/editCategory', form({ category: params.category, savePath: params.savePath }))
+  await http.post('/torrents/editCategory', form({
+    category: params.category,
+    savePath: params.savePath ?? '',
+    downloadPath: params.downloadPath,
+    downloadPathEnabled: params.enable,
+  }))
 }
 
 /** 删除分类（removeCategories 接收逗号分隔的分类名） */
 export async function removeCategories(categories: string[]): Promise<void> {
-  await http.post('/torrents/removeCategories', form({ categories: categories.join(',') }))
+  await http.post('/torrents/removeCategories', form({ categories: categories.join('\n') }))
 }
 
 /** 设置种子的分类 */
@@ -185,10 +296,67 @@ export async function setTorrentsUploadLimit(hashes: string[], limit: number): P
   await http.post('/torrents/setUploadLimit', form({ hashes: hashes.join('|'), limit }))
 }
 
+export async function getTorrentsDownloadLimit(hashes: string[]): Promise<Record<string, number>> {
+  const res = await http.get<Record<string, number>>('/torrents/downloadLimit', {
+    params: { hashes: hashes.join('|') },
+  })
+  return res.data
+}
+
+export async function getTorrentsUploadLimit(hashes: string[]): Promise<Record<string, number>> {
+  const res = await http.get<Record<string, number>>('/torrents/uploadLimit', {
+    params: { hashes: hashes.join('|') },
+  })
+  return res.data
+}
+
+export async function setTorrentsShareLimits(
+  hashes: string[],
+  limits: TorrentShareLimits & { shareLimitsMode?: string; shareLimitAction?: string },
+): Promise<void> {
+  await http.post('/torrents/setShareLimits', form({
+    hashes: hashes.join('|'),
+    ratioLimit: limits.ratioLimit ?? -2,
+    seedingTimeLimit: limits.seedingTimeLimit ?? -2,
+    inactiveSeedingTimeLimit: limits.inactiveSeedingTimeLimit ?? -2,
+    shareLimitsMode: limits.shareLimitsMode ?? 'Default',
+    shareLimitAction: limits.shareLimitAction ?? 'Default',
+  }))
+}
+
 /** 设置种子保存路径（move 操作） */
 export async function setTorrentsLocation(hashes: string[], location: string): Promise<void> {
   await http.post('/torrents/setLocation', form({ hashes: hashes.join('|'), location }))
 }
+
+export async function setTorrentsSavePath(hashes: string[], path: string): Promise<void> {
+  await http.post('/torrents/setSavePath', form({ id: hashes.join('|'), path }))
+}
+
+export async function setTorrentsDownloadPath(hashes: string[], path: string): Promise<void> {
+  await http.post('/torrents/setDownloadPath', form({ id: hashes.join('|'), path }))
+}
+
+export async function setTorrentsComment(hashes: string[], comment: string): Promise<void> {
+  await http.post('/torrents/setComment', form({ hashes: hashes.join('|'), comment }))
+}
+
+export async function setAutomaticTorrentManagement(hashes: string[], enable: boolean): Promise<void> {
+  await http.post('/torrents/setAutoManagement', form({ hashes: hashes.join('|'), enable }))
+}
+
+export async function setSuperSeeding(hashes: string[], value: boolean): Promise<void> {
+  await http.post('/torrents/setSuperSeeding', form({ hashes: hashes.join('|'), value }))
+}
+
+async function changeQueuePriority(endpoint: string, hashes: string[]): Promise<void> {
+  await http.post(`/torrents/${endpoint}`, form({ hashes: hashes.join('|') }))
+}
+
+export const increaseTorrentPriority = (hashes: string[]) => changeQueuePriority('increasePrio', hashes)
+export const decreaseTorrentPriority = (hashes: string[]) => changeQueuePriority('decreasePrio', hashes)
+export const setTorrentTopPriority = (hashes: string[]) => changeQueuePriority('topPrio', hashes)
+export const setTorrentBottomPriority = (hashes: string[]) => changeQueuePriority('bottomPrio', hashes)
 
 // ===== 导出与重命名 =====
 
@@ -218,7 +386,67 @@ export async function removeTrackers(hash: string, urls: string): Promise<void> 
   await http.post('/torrents/removeTrackers', form({ hash, urls }))
 }
 
+/** 修改 Tracker URL */
+export async function editTracker(hash: string, oldUrl: string, newUrl?: string, tier?: number): Promise<void> {
+  await http.post('/torrents/editTracker', form({ hash, url: oldUrl, origUrl: oldUrl, newUrl, tier }))
+}
+
+export async function addPeers(hashes: string[], peers: string[]): Promise<void> {
+  await http.post('/torrents/addPeers', form({ hashes: hashes.join('|'), peers: peers.join('|') }))
+}
+
+export async function createTags(tags: string[]): Promise<void> {
+  await http.post('/torrents/createTags', form({ tags: tags.join(',') }))
+}
+
+export async function setTags(hashes: string[], tags: string[]): Promise<void> {
+  await http.post('/torrents/setTags', form({ hashes: hashes.join('|'), tags: tags.join(',') }))
+}
+
 /** 重命名种子文件 */
 export async function renameFile(hash: string, oldPath: string, newPath: string): Promise<void> {
   await http.post('/torrents/renameFile', form({ hash, oldPath, newPath }))
+}
+
+export async function renameFolder(hash: string, oldPath: string, newPath: string): Promise<void> {
+  await http.post('/torrents/renameFolder', form({ hash, oldPath, newPath }))
+}
+
+export async function getTorrentSSLParameters(hash: string): Promise<SSLParameters> {
+  const res = await http.get<SSLParameters>('/torrents/SSLParameters', { params: { hash } })
+  return res.data
+}
+
+export async function setTorrentSSLParameters(hash: string, params: SSLParameters): Promise<void> {
+  await http.post('/torrents/setSSLParameters', form({
+    hash,
+    ssl_certificate: params.ssl_certificate,
+    ssl_private_key: params.ssl_private_key,
+    ssl_dh_params: params.ssl_dh_params,
+  }))
+}
+
+export async function fetchTorrentMetadata(source: string, downloader?: string): Promise<Record<string, unknown>> {
+  const res = await http.post<Record<string, unknown>>('/torrents/fetchMetadata', form({ source, downloader }))
+  return res.data
+}
+
+export async function parseTorrentMetadata(files: File[]): Promise<Array<Record<string, unknown>>> {
+  const data = new FormData()
+  for (const file of files) data.append('torrents', file, file.name)
+  const res = await http.post<Array<Record<string, unknown>>>('/torrents/parseMetadata', data)
+  return res.data
+}
+
+export async function saveTorrentMetadata(source: string): Promise<Blob> {
+  const res = await http.get<Blob>('/torrents/saveMetadata', { params: { source }, responseType: 'blob' })
+  return res.data
+}
+
+export async function downloadTorrentFile(hash: string, file: number | string): Promise<Blob> {
+  const res = await http.get<Blob>('/torrents/downloadFile', {
+    params: { hash, file },
+    responseType: 'blob',
+  })
+  return res.data
 }

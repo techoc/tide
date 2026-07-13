@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ name: 'TorrentDashboard' })
+
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useTorrentListStore } from '@/stores/torrentList'
 import { useAddTorrentModal } from '@/composables/useAddTorrent'
@@ -75,8 +77,14 @@ const currentContext = computed(() => {
   return '管理并查看当前 qBittorrent 中的所有任务'
 })
 
-const isEmpty = computed(
-  () => !store.loading && store.sortedTorrents.length === 0,
+/** qBittorrent 中确实没有任何种子 */
+const hasNoTorrents = computed(
+  () => !store.loading && store.torrents.length === 0,
+)
+
+/** 有种子，但当前筛选条件没有匹配结果 */
+const hasNoFilteredResults = computed(
+  () => !store.loading && store.torrents.length > 0 && store.sortedTorrents.length === 0,
 )
 
 // 响应式：移动端切换为卡片模式
@@ -196,7 +204,7 @@ function onAddTag(hash: string) {
       </div>
 
       <!-- 空状态 -->
-      <div v-else-if="isEmpty" class="h-full flex items-center justify-center">
+      <div v-else-if="hasNoTorrents" class="h-full flex items-center justify-center">
         <UEmpty
           icon="i-lucide-cloud-download"
           size="lg"
@@ -222,9 +230,32 @@ function onAddTag(hash: string) {
         <!-- 筛选面板 -->
         <FilterPanel class="mb-3 shrink-0" />
 
+        <!-- 筛选无结果：保留筛选面板，避免无法还原条件 -->
+        <div
+          v-if="hasNoFilteredResults"
+          class="flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-default bg-default shadow-sm"
+        >
+          <UEmpty
+            icon="i-lucide-filter-x"
+            size="lg"
+            title="没有符合条件的种子"
+            description="当前筛选条件没有匹配结果，可以调整条件或清除全部筛选。"
+          >
+            <template #actions>
+              <UButton
+                color="primary"
+                icon="i-lucide-rotate-ccw"
+                @click="store.clearAllFilters()"
+              >
+                清除全部筛选
+              </UButton>
+            </template>
+          </UEmpty>
+        </div>
+
         <!-- 桌面端：表格 -->
         <div
-          v-if="!isMobile"
+          v-else-if="!isMobile"
           class="table-container min-h-0 flex-1 overflow-hidden rounded-2xl border border-default bg-default shadow-sm"
         >
           <TorrentTable :show-detail="showDetail" @contextmenu="onContextMenu" @add-tag="onAddTag" />

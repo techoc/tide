@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { Torrent } from '@/types/qbittorrent'
 import { useTorrentListStore } from '@/stores/torrentList'
 import { formatSize, formatSpeed, formatEta, formatRatio, formatProgress } from '@/utils/format'
 import { getStateMeta } from '@/utils/state'

@@ -1,40 +1,109 @@
 import http, { form } from '@/api'
+import type {
+  BuildInfo,
+  DirectoryEntry,
+  NetworkInterface,
+  ProcessInfo,
+  QbtCookie,
+} from '@/types/qbittorrent'
 
-/** 全局传输信息（下载/上传速度等） */
-export interface TransferInfo {
-  dl_info_speed: number
-  dl_info_data: number
-  up_info_speed: number
-  up_info_data: number
-}
-
-/** 获取全局传输信息 */
-export async function getTransferInfo(): Promise<TransferInfo> {
-  const res = await http.get<TransferInfo>('/transfer/info')
+export async function getAppVersion(): Promise<string> {
+  const res = await http.get<string>('/app/version')
   return res.data
 }
 
-/** 获取全局设置 */
-export async function getPreferences(): Promise<Record<string, unknown>> {
-  const res = await http.get('/app/preferences')
+export async function getWebApiVersion(): Promise<string> {
+  const res = await http.get<string>('/app/webapiVersion')
   return res.data
 }
 
-/** 修改全局设置 */
+export async function getBuildInfo(): Promise<BuildInfo> {
+  const res = await http.get<BuildInfo>('/app/buildInfo')
+  return res.data
+}
+
+export async function getProcessInfo(): Promise<ProcessInfo> {
+  const res = await http.get<ProcessInfo>('/app/processInfo')
+  return res.data
+}
+
+export async function shutdownApplication(): Promise<void> {
+  await http.post('/app/shutdown', form({}))
+}
+
+export async function getPreferences<T extends Record<string, unknown> = Record<string, unknown>>(): Promise<T> {
+  const res = await http.get<T>('/app/preferences')
+  return res.data
+}
+
 export async function setPreferences(prefs: Record<string, unknown>): Promise<void> {
   await http.post('/app/setPreferences', form({ json: JSON.stringify(prefs) }))
 }
 
-/** 切换备选速度限制（开/关） */
-export async function toggleAlternativeSpeedLimits(): Promise<void> {
-  // qBittorrent v5 将端点从 /app/toggleAlternativeSpeedLimits 迁移至 /transfer/toggleSpeedLimitsMode
-  await http.post('/transfer/toggleSpeedLimitsMode', form({}))
+export async function getDefaultSavePath(): Promise<string> {
+  const res = await http.get<string>('/app/defaultSavePath')
+  return res.data
 }
 
-/** 获取备选速度限制状态（true 表示已启用） */
-export async function getAlternativeSpeedLimitsMode(): Promise<boolean> {
-  // qBittorrent v5 将端点从 /app/alternativeSpeedLimitsEnabled 迁移至 /transfer/speedLimitsMode
-  const res = await http.get<string>('/transfer/speedLimitsMode')
-  // 返回 "1"/"0"，但 axios 默认 transformResponse 会 JSON.parse 成数字 1/0，需统一为字符串比较
-  return String(res.data) === '1'
+export async function sendTestEmail(): Promise<void> {
+  await http.post('/app/sendTestEmail', form({}))
 }
+
+export async function getDirectoryContent(
+  dirPath: string,
+  options?: { mode?: 'all' | 'dirs' | 'files'; withMetadata?: false },
+): Promise<string[]>
+export async function getDirectoryContent(
+  dirPath: string,
+  options: { mode?: 'all' | 'dirs' | 'files'; withMetadata: true },
+): Promise<DirectoryEntry[]>
+export async function getDirectoryContent(
+  dirPath: string,
+  options: { mode?: 'all' | 'dirs' | 'files'; withMetadata?: boolean } = {},
+): Promise<string[] | DirectoryEntry[]> {
+  const res = await http.get<string[] | DirectoryEntry[]>('/app/getDirectoryContent', {
+    params: { dirPath, ...options },
+  })
+  return res.data
+}
+
+export async function getFreeSpaceAtPath(path: string): Promise<number> {
+  const res = await http.get<string | number>('/app/getFreeSpaceAtPath', { params: { path } })
+  return Number(res.data)
+}
+
+export async function getCookies(): Promise<QbtCookie[]> {
+  const res = await http.get<QbtCookie[]>('/app/cookies')
+  return res.data
+}
+
+export async function setCookies(cookies: QbtCookie[]): Promise<void> {
+  await http.post('/app/setCookies', form({ cookies: JSON.stringify(cookies) }))
+}
+
+export async function rotateApiKey(): Promise<string> {
+  const res = await http.post<{ apiKey: string }>('/app/rotateAPIKey', form({}))
+  return res.data.apiKey
+}
+
+export async function deleteApiKey(): Promise<void> {
+  await http.post('/app/deleteAPIKey', form({}))
+}
+
+export async function getNetworkInterfaces(): Promise<NetworkInterface[]> {
+  const res = await http.get<NetworkInterface[]>('/app/networkInterfaceList')
+  return res.data
+}
+
+export async function getNetworkInterfaceAddresses(iface = ''): Promise<string[]> {
+  const res = await http.get<string[]>('/app/networkInterfaceAddressList', { params: { iface } })
+  return res.data
+}
+
+// 保留旧导入路径，避免现有 store/组件迁移时破坏兼容性。
+export {
+  getTransferInfo,
+  getAlternativeSpeedLimitsMode,
+  toggleAlternativeSpeedLimits,
+} from './transfer'
+export type { TransferInfo } from '@/types/qbittorrent'

@@ -28,6 +28,24 @@ const router = createRouter({
           meta: { title: '统计概览' },
         },
         {
+          path: 'search',
+          name: 'search',
+          component: () => import('@/views/Search.vue'),
+          meta: { title: '资源搜索' },
+        },
+        {
+          path: 'rss',
+          name: 'rss',
+          component: () => import('@/views/Rss.vue'),
+          meta: { title: 'RSS 订阅' },
+        },
+        {
+          path: 'logs',
+          name: 'logs',
+          component: () => import('@/views/Logs.vue'),
+          meta: { title: '运行日志' },
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/Settings.vue'),

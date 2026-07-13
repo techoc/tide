@@ -3,6 +3,16 @@ import { ref, computed } from 'vue'
 import { useTorrentListStore } from '@/stores/torrentList'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import TagSelectorModal from './TagSelectorModal.vue'
+import {
+  decreaseTorrentPriority,
+  increaseTorrentPriority,
+  reannounceTorrents,
+  recheckTorrents,
+  setAutomaticTorrentManagement,
+  setSuperSeeding,
+  setTorrentBottomPriority,
+  setTorrentTopPriority,
+} from '@/api/modules/torrents'
 
 const store = useTorrentListStore()
 const toast = useToast()
@@ -55,6 +65,7 @@ async function handleForceStart() {
 }
 
 async function handleDelete(deleteFilesFlag: boolean) {
+  const count = store.selectedCount
   const confirmed = await confirmDialog.confirm({
     title: deleteFilesFlag ? '删除种子及文件' : '删除种子',
     description: deleteFilesFlag
@@ -66,11 +77,37 @@ async function handleDelete(deleteFilesFlag: boolean) {
   if (!confirmed) return
   try {
     await store.deleteSelected(deleteFilesFlag)
-    toast.add({ title: `已删除 ${store.selectedCount} 个种子`, color: 'success' })
+    toast.add({ title: `已删除 ${count} 个种子`, color: 'success' })
   } catch {
     toast.add({ title: '删除失败', color: 'error' })
   }
 }
+
+async function runAdvanced(title: string, action: (hashes: string[]) => Promise<void>) {
+  const hashes = selectedHashesArray.value
+  if (!hashes.length) return
+  try {
+    await action(hashes)
+    await store.fetchTorrents()
+    toast.add({ title, color: 'success' })
+  } catch {
+    toast.add({ title: '批量操作失败', color: 'error' })
+  }
+}
+
+const advancedItems = computed(() => [
+  { label: '重新校验', icon: 'i-lucide-shield-check', onSelect: () => runAdvanced('已开始重新校验', recheckTorrents) },
+  { label: '重新汇报 Tracker', icon: 'i-lucide-radio', onSelect: () => runAdvanced('已重新汇报 Tracker', reannounceTorrents) },
+  { type: 'separator' as const },
+  { label: '队列置顶', icon: 'i-lucide-chevrons-up', onSelect: () => runAdvanced('已移至队列顶部', setTorrentTopPriority) },
+  { label: '提高优先级', icon: 'i-lucide-chevron-up', onSelect: () => runAdvanced('已提高队列优先级', increaseTorrentPriority) },
+  { label: '降低优先级', icon: 'i-lucide-chevron-down', onSelect: () => runAdvanced('已降低队列优先级', decreaseTorrentPriority) },
+  { label: '队列置底', icon: 'i-lucide-chevrons-down', onSelect: () => runAdvanced('已移至队列底部', setTorrentBottomPriority) },
+  { type: 'separator' as const },
+  { label: '启用自动管理', icon: 'i-lucide-wand-sparkles', onSelect: () => runAdvanced('已启用自动管理', (hashes) => setAutomaticTorrentManagement(hashes, true)) },
+  { label: '关闭自动管理', icon: 'i-lucide-folder-cog', onSelect: () => runAdvanced('已关闭自动管理', (hashes) => setAutomaticTorrentManagement(hashes, false)) },
+  { label: '启用超级做种', icon: 'i-lucide-upload-cloud', onSelect: () => runAdvanced('已启用超级做种', (hashes) => setSuperSeeding(hashes, true)) },
+])
 
 function openTagModal(mode: 'add' | 'remove') {
   tagMode.value = mode
@@ -162,6 +199,16 @@ async function handleSetCategory() {
           label="移除标签"
           @click="openTagModal('remove')"
         />
+        <UDropdownMenu :items="advancedItems" :content="{ align: 'end' }">
+          <UButton
+            color="neutral"
+            variant="soft"
+            size="sm"
+            icon="i-lucide-ellipsis"
+            label="更多操作"
+            trailing-icon="i-lucide-chevron-down"
+          />
+        </UDropdownMenu>
         <UButton
           color="error"
           variant="soft"

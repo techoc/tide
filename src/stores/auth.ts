@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as apiLogin, logout as apiLogout, getAppVersion } from '@/api/modules/auth'
+import { login as apiLogin, logout as apiLogout } from '@/api/modules/auth'
+import { getAppVersion } from '@/api/modules/app'
 import { setBaseUrl } from '@/api'
 
 export const useAuthStore = defineStore(

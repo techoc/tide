@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ name: 'StatsView' })
+
 import StatsOverview from '@/components/torrent/StatsOverview.vue'
 </script>
 

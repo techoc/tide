@@ -6,6 +6,8 @@ import UCheckbox from '@nuxt/ui/components/Checkbox.vue'
 import UProgress from '@nuxt/ui/components/Progress.vue'
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
+import UDropdownMenu from '@nuxt/ui/components/DropdownMenu.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import type {
   Torrent,
   TorrentFile,
@@ -20,8 +22,23 @@ import {
   setFilePriority,
   addTrackers,
   removeTrackers,
+  editTracker,
+  pauseTorrents,
+  resumeTorrents,
+  recheckTorrents,
+  reannounceTorrents,
+  toggleSequentialDownload,
+  toggleFirstLastPiecePriority,
 } from '@/api/modules/torrents'
-import { formatSize, formatSpeed, formatTimestamp, formatRatio, formatProgress } from '@/utils/format'
+import {
+  formatSize,
+  formatSpeed,
+  formatTimestamp,
+  formatRatio,
+  formatProgress,
+  formatEta,
+  formatDuration,
+} from '@/utils/format'
 import { getStateMeta } from '@/utils/state'
 
 const props = defineProps<{ hash: string | null }>()
@@ -39,6 +56,8 @@ const show = computed({
 
 const activeTab = ref<'overview' | 'files' | 'trackers' | 'peers'>('overview')
 const loading = ref(false)
+const refreshing = ref(false)
+const torrentAction = ref('')
 const files = ref<TorrentFile[]>([])
 const trackers = ref<TorrentTracker[]>([])
 const peers = ref<TorrentPeers | null>(null)
@@ -60,6 +79,12 @@ const stateMeta = computed(() =>
   torrent.value ? getStateMeta(torrent.value.state) : null,
 )
 
+const isPaused = computed(() =>
+  torrent.value
+    ? ['pausedUP', 'pausedDL', 'stoppedUP', 'stoppedDL'].includes(torrent.value.state)
+    : false,
+)
+
 // 加载详情数据
 async function loadDetailData() {
   if (!props.hash) return
@@ -76,6 +101,57 @@ async function loadDetailData() {
     toast.add({ title: '加载详情失败', color: 'error' })
   } finally {
     loading.value = false
+  }
+}
+
+/** 刷新主列表和当前标签页数据 */
+async function refreshDetail(showToast = false) {
+  if (!props.hash || refreshing.value) return
+  refreshing.value = true
+  try {
+    await store.fetchTorrents()
+    if (activeTab.value !== 'overview') await loadDetailData()
+    if (showToast) toast.add({ title: '详情已刷新', color: 'success' })
+  } catch {
+    toast.add({ title: '刷新详情失败', color: 'error' })
+  } finally {
+    refreshing.value = false
+  }
+}
+
+/** 暂停或恢复当前种子 */
+async function handlePauseResume() {
+  if (!props.hash || torrentAction.value) return
+  const wasPaused = isPaused.value
+  torrentAction.value = 'pause'
+  try {
+    if (wasPaused) await resumeTorrents([props.hash])
+    else await pauseTorrents([props.hash])
+    await store.fetchTorrents()
+    toast.add({ title: wasPaused ? '已恢复' : '已暂停', color: 'success' })
+  } catch {
+    toast.add({ title: '操作失败', color: 'error' })
+  } finally {
+    torrentAction.value = ''
+  }
+}
+
+/** 执行单个种子命令并同步详情 */
+async function runTorrentCommand(
+  key: string,
+  successTitle: string,
+  action: (hashes: string[]) => Promise<void>,
+) {
+  if (!props.hash || torrentAction.value) return
+  torrentAction.value = key
+  try {
+    await action([props.hash])
+    await store.fetchTorrents()
+    toast.add({ title: successTitle, color: 'success' })
+  } catch {
+    toast.add({ title: '操作失败', color: 'error' })
+  } finally {
+    torrentAction.value = ''
   }
 }
 
@@ -96,6 +172,15 @@ async function copyHash() {
   try {
     await navigator.clipboard.writeText(props.hash)
     toast.add({ title: 'Hash 已复制', color: 'success' })
+  } catch {
+    toast.add({ title: '复制失败', color: 'error' })
+  }
+}
+
+async function copyText(text: string, successTitle: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    toast.add({ title: successTitle, color: 'success' })
   } catch {
     toast.add({ title: '复制失败', color: 'error' })
   }
@@ -246,11 +331,50 @@ function priorityLabel(priority: number): string {
   return map[priority] ?? '普通'
 }
 
+// ===== 文件筛选与批量选择 =====
+const fileSearch = ref('')
+const selectedFileIndexes = ref<Set<number>>(new Set())
+
+const filteredFiles = computed(() => {
+  const keyword = fileSearch.value.trim().toLocaleLowerCase()
+  if (!keyword) return files.value
+  return files.value.filter((file) => file.name.toLocaleLowerCase().includes(keyword))
+})
+
+const allVisibleFilesSelected = computed(() =>
+  filteredFiles.value.length > 0
+  && filteredFiles.value.every((file) => selectedFileIndexes.value.has(file.index)),
+)
+
+const someVisibleFilesSelected = computed(() =>
+  !allVisibleFilesSelected.value
+  && filteredFiles.value.some((file) => selectedFileIndexes.value.has(file.index)),
+)
+
+function toggleAllVisibleFiles(selected: boolean) {
+  const next = new Set(selectedFileIndexes.value)
+  for (const file of filteredFiles.value) {
+    if (selected) next.add(file.index)
+    else next.delete(file.index)
+  }
+  selectedFileIndexes.value = next
+}
+
 /** 文件列表列定义 */
 const fileColumns: TableColumn<TorrentFile>[] = [
   {
     id: 'select',
-    header: '',
+    header: () => h(UCheckbox, {
+      modelValue: allVisibleFilesSelected.value
+        ? true
+        : someVisibleFilesSelected.value
+          ? 'indeterminate'
+          : false,
+      'onUpdate:modelValue': (value: unknown) => {
+        if (value !== 'indeterminate') toggleAllVisibleFiles(value === true)
+      },
+      'aria-label': '选择当前显示的全部文件',
+    }),
     cell: ({ row }) =>
       h(UCheckbox, {
         'modelValue': selectedFileIndexes.value.has(row.original.index),
@@ -264,14 +388,14 @@ const fileColumns: TableColumn<TorrentFile>[] = [
   {
     accessorKey: 'name',
     header: '文件名',
-    cell: ({ row }) => h('span', { class: 'truncate' }, row.original.name),
-    minSize: 240,
+    cell: ({ row }) => h('span', { class: 'block max-w-[240px] truncate', title: row.original.name }, row.original.name),
+    size: 240,
   },
   {
     accessorKey: 'size',
     header: '大小',
     cell: ({ row }) => formatSize(row.original.size),
-    size: 100,
+    size: 90,
   },
   {
     accessorKey: 'progress',
@@ -289,82 +413,35 @@ const fileColumns: TableColumn<TorrentFile>[] = [
         h('span', { class: 'text-[11px] tabular-nums text-right min-w-[32px]' }, `${p}%`),
       ])
     },
-    size: 140,
+    size: 120,
   },
   {
     id: 'priority',
     header: '优先级',
     cell: ({ row }) =>
-      h('div', { class: 'flex items-center gap-1' }, [
-        h(UBadge, {
-          label: priorityLabel(row.original.priority),
-          color: priorityColor(row.original.priority),
-          variant: 'subtle',
-          size: 'sm',
-        }),
-        h(UButton, {
-          label: '跳过',
-          size: 'xs',
-          variant: 'ghost',
-          onClick: () => handleFilePriority([row.original.index], 0),
-        }),
-        h(UButton, {
-          label: '普通',
-          size: 'xs',
-          variant: 'ghost',
-          onClick: () => handleFilePriority([row.original.index], 1),
-        }),
-        h(UButton, {
-          label: '最高',
-          size: 'xs',
-          variant: 'ghost',
-          onClick: () => handleFilePriority([row.original.index], 7),
-        }),
-      ]),
-    size: 180,
-  },
-]
-
-/** Tracker 列表列定义 */
-const trackerColumns: TableColumn<TorrentTracker>[] = [
-  {
-    accessorKey: 'url',
-    header: 'Tracker URL',
-    cell: ({ row }) => h('span', { class: 'truncate' }, row.original.url),
-    minSize: 280,
-  },
-  {
-    accessorKey: 'status',
-    header: '状态',
-    cell: ({ row }) => {
-      const statusMap: Record<
-        number,
-        { label: string; color: 'neutral' | 'success' | 'warning' | 'error' }
-      > = {
-        0: { label: '已禁用', color: 'neutral' },
-        1: { label: '未联系', color: 'neutral' },
-        2: { label: '工作中', color: 'success' },
-        3: { label: '更新中', color: 'warning' },
-        4: { label: '未工作', color: 'error' },
-      }
-      const meta = statusMap[row.original.status] ?? statusMap[0]!
-      return h(UBadge, {
-        label: meta!.label,
-        color: meta!.color,
-        variant: 'subtle',
-        size: 'sm',
-      })
-    },
-    size: 100,
-  },
-  { accessorKey: 'num_seeds', header: '种子数', size: 80 },
-  { accessorKey: 'num_leeches', header: '下载者', size: 80 },
-  { accessorKey: 'num_downloaded', header: '已下载', size: 80 },
-  {
-    accessorKey: 'msg',
-    header: '消息',
-    cell: ({ row }) => h('span', { class: 'truncate' }, row.original.msg || '—'),
-    minSize: 160,
+      h(
+        UDropdownMenu,
+        {
+          items: [
+            { label: '跳过', onSelect: () => handleFilePriority([row.original.index], 0) },
+            { label: '普通', onSelect: () => handleFilePriority([row.original.index], 1) },
+            { label: '高', onSelect: () => handleFilePriority([row.original.index], 6) },
+            { label: '最高', onSelect: () => handleFilePriority([row.original.index], 7) },
+          ],
+          content: { align: 'end' },
+          ui: { content: 'z-60' },
+        },
+        {
+          default: () => h(UButton, {
+            label: priorityLabel(row.original.priority),
+            color: priorityColor(row.original.priority),
+            variant: 'soft',
+            size: 'xs',
+            trailingIcon: 'i-lucide-chevron-down',
+          }),
+        },
+      ),
+    size: 120,
   },
 ]
 
@@ -379,45 +456,82 @@ type PeerRow = {
   country_code: string
 }
 
+type PeerSortKey = 'ip' | 'client' | 'progress' | 'dl_speed' | 'up_speed' | 'country_code'
+
+/** 对等方排序表头：与数据共用同一张表，避免列错位 */
+function peerHeader(label: string, key: PeerSortKey) {
+  return () => h(
+    'button',
+    {
+      type: 'button',
+      class: 'inline-flex items-center gap-1 whitespace-nowrap hover:text-primary transition-colors',
+      onClick: () => togglePeerSort(key),
+    },
+    [
+      label,
+      peerSortKey.value === key
+        ? h('span', { class: 'text-[10px]' }, peerSortReverse.value ? '▼' : '▲')
+        : null,
+    ],
+  )
+}
+
 /** 对等方列表列定义 */
 const peerColumns: TableColumn<PeerRow>[] = [
   {
     accessorKey: 'ip',
-    header: 'IP',
-    cell: ({ row }) => `${row.original.ip}:${row.original.port}`,
-    size: 180,
-  },
-  {
-    accessorKey: 'client',
-    header: '客户端',
-    cell: ({ row }) => h('span', { class: 'truncate' }, row.original.client),
+    header: peerHeader('IP:端口', 'ip'),
+    cell: ({ row }) => h(
+      UTooltip,
+      {
+        text: `${row.original.ip}:${row.original.port}`,
+        delayDuration: 200,
+        ui: {
+          content: 'z-60 max-w-[min(90vw,480px)]',
+          text: 'break-all font-mono',
+        },
+      },
+      {
+        default: () => h(
+          'span',
+          { class: 'block max-w-[150px] cursor-help truncate font-mono' },
+          `${row.original.ip}:${row.original.port}`,
+        ),
+      },
+    ),
     size: 160,
   },
   {
+    accessorKey: 'client',
+    header: peerHeader('客户端', 'client'),
+    cell: ({ row }) => h('span', { class: 'block max-w-[130px] truncate', title: row.original.client }, row.original.client || '—'),
+    size: 140,
+  },
+  {
     accessorKey: 'progress',
-    header: '进度',
+    header: peerHeader('进度', 'progress'),
     cell: ({ row }) => `${formatProgress(row.original.progress)}%`,
-    size: 100,
+    size: 70,
   },
   {
     accessorKey: 'dl_speed',
-    header: '下载',
+    header: peerHeader('下载', 'dl_speed'),
     cell: ({ row }) =>
       row.original.dl_speed > 0 ? formatSpeed(row.original.dl_speed) : '—',
-    size: 110,
+    size: 90,
   },
   {
     accessorKey: 'up_speed',
-    header: '上传',
+    header: peerHeader('上传', 'up_speed'),
     cell: ({ row }) =>
       row.original.up_speed > 0 ? formatSpeed(row.original.up_speed) : '—',
-    size: 110,
+    size: 90,
   },
   {
     accessorKey: 'country_code',
-    header: '地区',
+    header: peerHeader('地区', 'country_code'),
     cell: ({ row }) => row.original.country_code || '—',
-    size: 70,
+    size: 60,
   },
 ]
 
@@ -425,8 +539,14 @@ const peerList = computed(() =>
   peers.value ? Object.values(peers.value.peers) : [],
 )
 
+const peerSummary = computed(() => ({
+  count: peerList.value.length,
+  downloadSpeed: peerList.value.reduce((sum, peer) => sum + peer.dl_speed, 0),
+  uploadSpeed: peerList.value.reduce((sum, peer) => sum + peer.up_speed, 0),
+}))
+
 // ===== Peers 排序 =====
-const peerSortKey = ref<'ip' | 'client' | 'progress' | 'dl_speed' | 'up_speed' | 'country_code' | null>(null)
+const peerSortKey = ref<PeerSortKey | null>(null)
 const peerSortReverse = ref(false)
 
 /** 排序后的 Peers 列表 */
@@ -449,7 +569,7 @@ const sortedPeerList = computed(() => {
 })
 
 /** 切换 Peers 排序 */
-function togglePeerSort(key: 'ip' | 'client' | 'progress' | 'dl_speed' | 'up_speed' | 'country_code') {
+function togglePeerSort(key: PeerSortKey) {
   if (peerSortKey.value === key) {
     peerSortReverse.value = !peerSortReverse.value
   } else {
@@ -461,6 +581,43 @@ function togglePeerSort(key: 'ip' | 'client' | 'progress' | 'dl_speed' | 'up_spe
 // ===== Tracker 管理 =====
 const trackerInput = ref('')
 const trackerAdding = ref(false)
+const editingTrackerUrl = ref<string | null>(null)
+const trackerEditInput = ref('')
+const trackerEditing = ref(false)
+
+function isEditableTracker(url: string) {
+  return /^(https?|udp|wss?):\/\//i.test(url)
+}
+
+function startEditTracker(url: string) {
+  editingTrackerUrl.value = url
+  trackerEditInput.value = url
+}
+
+function cancelEditTracker() {
+  editingTrackerUrl.value = null
+  trackerEditInput.value = ''
+}
+
+async function handleEditTracker() {
+  if (!props.hash || !editingTrackerUrl.value || !trackerEditInput.value.trim()) return
+  const newUrl = trackerEditInput.value.trim()
+  if (newUrl === editingTrackerUrl.value) {
+    cancelEditTracker()
+    return
+  }
+  trackerEditing.value = true
+  try {
+    await editTracker(props.hash, editingTrackerUrl.value, newUrl)
+    toast.add({ title: 'Tracker 已修改', color: 'success' })
+    cancelEditTracker()
+    trackers.value = await getTorrentTrackers(props.hash)
+  } catch {
+    toast.add({ title: '修改 Tracker 失败', color: 'error' })
+  } finally {
+    trackerEditing.value = false
+  }
+}
 
 /** 添加 Tracker */
 async function handleAddTracker() {
@@ -490,9 +647,6 @@ async function handleRemoveTracker(url: string) {
   }
 }
 
-// ===== 文件批量优先级 =====
-const selectedFileIndexes = ref<Set<number>>(new Set())
-
 /** 切换文件选中 */
 function toggleFileSelect(index: number) {
   const next = new Set(selectedFileIndexes.value)
@@ -517,8 +671,10 @@ async function handleBatchPriority(priority: 0 | 1 | 6 | 7) {
 // hash 变化时清空文件选中
 watch(() => props.hash, () => {
   selectedFileIndexes.value = new Set()
+  fileSearch.value = ''
   peerSortKey.value = null
   peerSortReverse.value = false
+  cancelEditTracker()
 })
 </script>
 
@@ -526,8 +682,34 @@ watch(() => props.hash, () => {
   <USlideover
     v-model:open="show"
     :title="torrent?.name || '种子详情'"
-    :ui="{ content: 'w-[680px] max-w-full' }"
+    :ui="{
+      overlay: 'z-40',
+      content: 'z-50 w-[680px] max-w-full',
+    }"
   >
+    <template #actions>
+      <UButton
+        :icon="isPaused ? 'i-lucide-play' : 'i-lucide-pause'"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        :loading="torrentAction === 'pause'"
+        :aria-label="isPaused ? '恢复种子' : '暂停种子'"
+        :title="isPaused ? '恢复种子' : '暂停种子'"
+        @click="handlePauseResume"
+      />
+      <UButton
+        icon="i-lucide-refresh-cw"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        :loading="refreshing"
+        aria-label="刷新详情"
+        title="刷新详情"
+        @click="refreshDetail(true)"
+      />
+    </template>
+
     <template #body>
       <template v-if="torrent">
         <!-- 状态标识 + 进度 -->
@@ -592,8 +774,42 @@ watch(() => props.hash, () => {
                 <span class="flex-1 text-[13px] break-all">{{ torrent.completion_on ? formatTimestamp(torrent.completion_on) : '—' }}</span>
               </div>
               <div class="flex py-2.5 border-b border-default gap-3">
+                <span class="w-20 shrink-0 text-[13px] text-muted">剩余时间</span>
+                <span class="flex-1 text-[13px]">{{ formatEta(torrent.eta) }}</span>
+              </div>
+              <div class="flex py-2.5 border-b border-default gap-3">
+                <span class="w-20 shrink-0 text-[13px] text-muted">活动时间</span>
+                <span class="flex-1 text-[13px]">{{ formatDuration(torrent.time_active) }}</span>
+              </div>
+              <div class="flex py-2.5 border-b border-default gap-3">
+                <span class="w-20 shrink-0 text-[13px] text-muted">最后活动</span>
+                <span class="flex-1 text-[13px]">{{ formatTimestamp(torrent.last_activity) }}</span>
+              </div>
+              <div class="flex py-2.5 border-b border-default gap-3">
+                <span class="w-20 shrink-0 text-[13px] text-muted">可用性</span>
+                <span class="flex-1 text-[13px] tabular-nums">{{ torrent.availability < 0 ? '—' : torrent.availability.toFixed(3) }}</span>
+              </div>
+              <div class="flex py-2.5 border-b border-default gap-3">
                 <span class="w-20 shrink-0 text-[13px] text-muted">保存路径</span>
                 <span class="flex-1 text-[13px] line-clamp-2 break-all">{{ torrent.save_path }}</span>
+              </div>
+              <div class="flex py-2.5 border-b border-default gap-3">
+                <span class="w-20 shrink-0 text-[13px] text-muted">内容路径</span>
+                <span class="flex-1 text-[13px] line-clamp-2 break-all">{{ torrent.content_path || '—' }}</span>
+              </div>
+              <div class="flex py-2.5 border-b border-default gap-3">
+                <span class="w-20 shrink-0 text-[13px] text-muted">Magnet</span>
+                <div class="flex-1 min-w-0 flex items-center gap-1">
+                  <span class="truncate text-xs font-mono">{{ torrent.magnet_uri || '—' }}</span>
+                  <UButton
+                    v-if="torrent.magnet_uri"
+                    size="xs"
+                    variant="ghost"
+                    icon="i-lucide-copy"
+                    aria-label="复制 Magnet 链接"
+                    @click="copyText(torrent.magnet_uri, 'Magnet 链接已复制')"
+                  />
+                </div>
               </div>
               <div class="flex py-2.5 border-b border-default gap-3">
                 <span class="w-20 shrink-0 text-[13px] text-muted">Tracker</span>
@@ -637,6 +853,45 @@ watch(() => props.hash, () => {
                 种子操作
               </h4>
 
+              <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="soft"
+                  icon="i-lucide-radio"
+                  label="重新汇报"
+                  :loading="torrentAction === 'reannounce'"
+                  @click="runTorrentCommand('reannounce', '已向 Tracker 重新汇报', reannounceTorrents)"
+                />
+                <UButton
+                  size="sm"
+                  color="neutral"
+                  variant="soft"
+                  icon="i-lucide-shield-check"
+                  label="重新校验"
+                  :loading="torrentAction === 'recheck'"
+                  @click="runTorrentCommand('recheck', '已开始重新校验', recheckTorrents)"
+                />
+                <UButton
+                  size="sm"
+                  :color="torrent.seq_dl ? 'primary' : 'neutral'"
+                  variant="soft"
+                  icon="i-lucide-list-ordered"
+                  label="顺序下载"
+                  :loading="torrentAction === 'sequential'"
+                  @click="runTorrentCommand('sequential', '顺序下载设置已更新', toggleSequentialDownload)"
+                />
+                <UButton
+                  size="sm"
+                  :color="torrent.f_l_piece_prio ? 'primary' : 'neutral'"
+                  variant="soft"
+                  icon="i-lucide-chevrons-left-right-ellipsis"
+                  label="首尾优先"
+                  :loading="torrentAction === 'first-last'"
+                  @click="runTorrentCommand('first-last', '首尾块优先设置已更新', toggleFirstLastPiecePriority)"
+                />
+              </div>
+
               <!-- 重命名 -->
               <div class="flex items-center gap-2">
                 <span class="w-20 shrink-0 text-[13px] text-muted">名称</span>
@@ -676,6 +931,7 @@ watch(() => props.hash, () => {
                   :items="categoryItems"
                   size="sm"
                   class="flex-1"
+                  :ui="{ content: 'z-60' }"
                 />
                 <span v-else class="flex-1 text-[13px] truncate">{{ torrent.category || '未分类' }}</span>
                 <UButton
@@ -772,11 +1028,24 @@ watch(() => props.hash, () => {
 
           <!-- 文件列表 -->
           <template #files>
+            <div class="mb-3 flex items-center gap-2">
+              <UInput
+                v-model="fileSearch"
+                icon="i-lucide-search"
+                placeholder="搜索文件名"
+                size="sm"
+                class="flex-1"
+              />
+              <span class="shrink-0 text-xs tabular-nums text-muted">
+                {{ filteredFiles.length }} / {{ files.length }}
+              </span>
+            </div>
+
             <!-- 批量操作栏 -->
-            <div v-if="files.length && selectedFileIndexes.size > 0" class="flex items-center gap-2 mb-2 p-2 bg-primary/10 border border-primary/30 rounded-lg">
+            <div v-if="files.length && selectedFileIndexes.size > 0" class="flex flex-wrap items-center gap-2 mb-2 p-2 bg-primary/10 border border-primary/30 rounded-lg">
               <span class="text-sm text-primary">已选 {{ selectedFileIndexes.size }} 个文件</span>
               <UButton size="xs" color="neutral" variant="ghost" label="清除" @click="() => { selectedFileIndexes = new Set() }" />
-              <div class="flex gap-1 ml-auto">
+              <div class="flex flex-wrap gap-1 w-full sm:w-auto sm:ml-auto">
                 <UButton size="xs" color="neutral" variant="soft" label="跳过" @click="handleBatchPriority(0)" />
                 <UButton size="xs" color="neutral" variant="soft" label="普通" @click="handleBatchPriority(1)" />
                 <UButton size="xs" color="warning" variant="soft" label="高" @click="handleBatchPriority(6)" />
@@ -785,27 +1054,33 @@ watch(() => props.hash, () => {
             </div>
 
             <UTable
-              v-if="files.length"
-              :data="files"
+              v-if="filteredFiles.length"
+              :data="filteredFiles"
               :columns="fileColumns"
               :loading="loading"
+              class="w-full max-w-full"
+              :ui="{
+                base: 'min-w-[610px]',
+                th: 'px-2 py-2.5',
+                td: 'px-2 py-2.5',
+              }"
             />
             <div v-else-if="loading" class="flex items-center justify-center py-12">
               <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-muted" />
             </div>
-            <UEmpty v-else description="暂无文件数据" />
+            <UEmpty v-else :description="fileSearch ? '没有匹配的文件' : '暂无文件数据'" />
           </template>
 
           <!-- Tracker -->
           <template #trackers>
             <!-- 添加 Tracker 输入区 -->
-            <div class="flex gap-2 mb-3">
-              <UInput
+            <div class="flex items-end gap-2 mb-3">
+              <UTextarea
                 v-model="trackerInput"
                 placeholder="输入 Tracker URL，每行一个"
                 class="flex-1"
-                :loading="trackerAdding"
-                @keyup.enter="handleAddTracker"
+                :rows="2"
+                :disabled="trackerAdding"
               />
               <UButton
                 color="primary"
@@ -819,13 +1094,30 @@ watch(() => props.hash, () => {
             <div v-if="trackers.length" class="flex flex-col gap-1">
               <div
                 v-for="(t, i) in trackers"
-                :key="i"
+                :key="`${t.url}-${i}`"
                 class="flex items-center gap-2 p-2 rounded-md hover:bg-elevated/50 group"
               >
                 <UIcon name="i-lucide-globe" class="size-4 text-muted shrink-0" />
                 <div class="flex-1 min-w-0 flex flex-col gap-0.5">
-                  <span class="text-xs truncate">{{ t.url }}</span>
-                  <div class="flex items-center gap-2 text-[11px] text-muted">
+                  <UInput
+                    v-if="editingTrackerUrl === t.url"
+                    v-model="trackerEditInput"
+                    size="sm"
+                    class="w-full"
+                    :disabled="trackerEditing"
+                    autofocus
+                    @keyup.enter="handleEditTracker"
+                    @keyup.esc="cancelEditTracker"
+                  />
+                  <UTooltip
+                    v-else
+                    :text="t.url"
+                    :delay-duration="200"
+                    :ui="{ content: 'z-60 max-w-[min(90vw,520px)]', text: 'break-all font-mono' }"
+                  >
+                    <span class="block cursor-help truncate text-xs">{{ t.url }}</span>
+                  </UTooltip>
+                  <div v-if="editingTrackerUrl !== t.url" class="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-muted">
                     <UBadge
                       :label="t.status === 2 ? '工作中' : t.status === 3 ? '更新中' : t.status === 4 ? '未工作' : t.status === 1 ? '未联系' : '已禁用'"
                       :color="t.status === 2 ? 'success' : t.status === 4 ? 'error' : t.status === 3 ? 'warning' : 'neutral'"
@@ -834,16 +1126,50 @@ watch(() => props.hash, () => {
                     />
                     <span>种子: {{ t.num_seeds }}</span>
                     <span>下载者: {{ t.num_leeches }}</span>
+                    <span v-if="t.tier >= 0">层级: {{ t.tier }}</span>
                   </div>
+                  <span v-if="editingTrackerUrl !== t.url && t.msg" class="truncate text-[11px] text-warning" :title="t.msg">{{ t.msg }}</span>
                 </div>
-                <UButton
-                  icon="i-lucide-trash"
-                  size="xs"
-                  color="neutral"
-                  variant="ghost"
-                  class="opacity-0 group-hover:opacity-100 transition-opacity"
-                  @click="handleRemoveTracker(t.url)"
-                />
+                <template v-if="editingTrackerUrl === t.url">
+                  <UButton
+                    icon="i-lucide-check"
+                    size="xs"
+                    color="primary"
+                    variant="ghost"
+                    :loading="trackerEditing"
+                    aria-label="保存 Tracker"
+                    @click="handleEditTracker"
+                  />
+                  <UButton
+                    icon="i-lucide-x"
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    :disabled="trackerEditing"
+                    aria-label="取消修改"
+                    @click="cancelEditTracker"
+                  />
+                </template>
+                <template v-else-if="isEditableTracker(t.url)">
+                  <UButton
+                    icon="i-lucide-pencil"
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+                    aria-label="修改 Tracker"
+                    @click="startEditTracker(t.url)"
+                  />
+                  <UButton
+                    icon="i-lucide-trash"
+                    size="xs"
+                    color="neutral"
+                    variant="ghost"
+                    class="opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
+                    aria-label="删除 Tracker"
+                    @click="handleRemoveTracker(t.url)"
+                  />
+                </template>
               </div>
             </div>
             <div v-else-if="loading" class="flex items-center justify-center py-12">
@@ -854,37 +1180,24 @@ watch(() => props.hash, () => {
 
           <!-- 对等方 -->
           <template #peers>
-            <!-- Peers 排序表头 -->
-            <div v-if="sortedPeerList.length" class="flex items-center gap-1 mb-2 px-2 text-xs text-muted">
-              <button class="hover:text-primary transition-colors" @click="togglePeerSort('ip')">IP:端口</button>
-              <span>|</span>
-              <button class="hover:text-primary transition-colors" @click="togglePeerSort('client')">客户端</button>
-              <span>|</span>
-              <button class="hover:text-primary transition-colors" @click="togglePeerSort('progress')">进度</button>
-              <span>|</span>
-              <button class="hover:text-primary transition-colors" @click="togglePeerSort('dl_speed')">↓速度</button>
-              <span>|</span>
-              <button class="hover:text-primary transition-colors" @click="togglePeerSort('up_speed')">↑速度</button>
-              <span>|</span>
-              <button class="hover:text-primary transition-colors" @click="togglePeerSort('country_code')">地区</button>
+            <div v-if="sortedPeerList.length" class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-elevated/50 px-3 py-2 text-xs text-muted">
+              <span>连接 <strong class="text-default">{{ peerSummary.count }}</strong></span>
+              <span>下载 <strong class="text-blue-500">{{ formatSpeed(peerSummary.downloadSpeed) }}</strong></span>
+              <span>上传 <strong class="text-emerald-500">{{ formatSpeed(peerSummary.uploadSpeed) }}</strong></span>
             </div>
-
-            <div v-if="sortedPeerList.length" class="flex flex-col gap-0.5 max-h-[400px] overflow-y-auto">
-              <div
-                v-for="(p, i) in sortedPeerList"
-                :key="i"
-                class="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-elevated/50 text-xs"
-              >
-                <div class="flex items-center gap-1.5 min-w-0 w-[160px]">
-                  <span v-if="p.country_code" class="text-base">{{ p.country_code }}</span>
-                  <span class="font-mono truncate">{{ p.ip }}:{{ p.port }}</span>
-                </div>
-                <span class="flex-1 truncate text-muted">{{ p.client || '—' }}</span>
-                <span class="w-10 text-right tabular-nums">{{ formatProgress(p.progress) }}%</span>
-                <span class="w-16 text-right tabular-nums text-blue-500">{{ p.dl_speed > 0 ? formatSpeed(p.dl_speed) : '—' }}</span>
-                <span class="w-16 text-right tabular-nums text-emerald-500">{{ p.up_speed > 0 ? formatSpeed(p.up_speed) : '—' }}</span>
-              </div>
-            </div>
+            <UTable
+              v-if="sortedPeerList.length"
+              :data="sortedPeerList"
+              :columns="peerColumns"
+              class="w-full max-w-full"
+              :ui="{
+                root: 'max-h-[400px]',
+                base: 'min-w-[610px]',
+                thead: 'sticky top-0 z-1 bg-default',
+                th: 'px-2 py-2.5 text-xs',
+                td: 'px-2 py-2.5 text-xs tabular-nums',
+              }"
+            />
             <div v-else-if="loading" class="flex items-center justify-center py-12">
               <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-muted" />
             </div>

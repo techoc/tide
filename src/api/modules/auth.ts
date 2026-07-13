@@ -24,15 +24,3 @@ export async function logout(): Promise<void> {
   // 传 form({}) 以设置 application/x-www-form-urlencoded，否则 qBittorrent 返回 415
   await http.post('/auth/logout', form({}))
 }
-
-/** 获取 qBittorrent 版本号（可用于校验连接是否正常） */
-export async function getAppVersion(): Promise<string> {
-  const res = await http.get<string>('/app/version')
-  return res.data
-}
-
-/** 获取 Web API 版本 */
-export async function getWebApiVersion(): Promise<string> {
-  const res = await http.get<string>('/app/webapiVersion')
-  return res.data
-}

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+defineOptions({ name: 'LoginView' })
+
 import { ref, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'

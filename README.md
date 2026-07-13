@@ -13,6 +13,19 @@ qBittorrent Web UI — 基于 Vue 3 + Nuxt UI v4 的现代化前端。
 - 主题切换：亮色/暗色模式
 - 响应式布局：桌面/移动端适配
 - 兼容 qBittorrent v5 API（stop/start、stoppedDL/stoppedUP、sync/torrentPeers）
+- 内置资源搜索：搜索插件管理、实时结果、直接添加下载
+- RSS 阅读器：订阅/文件夹管理、刷新、已读状态与文章浏览
+- 运行日志：主日志分级筛选与 Peer 封禁记录
+
+## Web API 覆盖
+
+`src/api/modules` 已按 qBittorrent Web API 控制器拆分并覆盖以下作用域：
+
+- `auth`、`app`、`transfer`、`log`、`sync`
+- `torrents`（含 v5 的 Web Seed、元数据、下载文件、SSL、队列与分享限制接口）
+- `rss`、`search`、`torrentcreator`、`clientData`
+
+统一客户端负责 Cookie 会话、表单编码、动态服务地址与认证失效通知；业务组件不直接拼接 API 请求。
 
 ## 技术栈
 
