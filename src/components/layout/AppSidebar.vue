@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
 import { useTorrentListStore } from '@/stores/torrentList'
 import { useSettingsStore } from '@/stores/settings'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
@@ -26,11 +27,26 @@ const store = useTorrentListStore()
 const settings = useSettingsStore()
 const toast = useToast()
 const confirmDialog = useConfirmDialog()
+const router = useRouter()
 
 const collapsed = computed(() => settings.sidebarCollapsed)
 
+/** 底部导航项：统计 / 设置 */
+const bottomItems = [
+  { to: '/stats', label: '统计概览', icon: 'i-lucide-bar-chart-3' },
+  { to: '/settings', label: '设置', icon: 'i-lucide-settings' },
+]
+
+/** 若当前不在种子列表页，则跳转回去以查看筛选结果 */
+function ensureDashboard() {
+  if (router.currentRoute.value.name !== 'dashboard') {
+    router.push({ name: 'dashboard' })
+  }
+}
+
 function selectStatus(key: TorrentFilter) {
   store.setFilter(key)
+  ensureDashboard()
 }
 
 function selectCategory(cat: string) {
@@ -40,10 +56,12 @@ function selectCategory(cat: string) {
   } else {
     store.activeCategory = store.activeCategory === cat ? '' : cat
   }
+  ensureDashboard()
 }
 
 function selectTag(tag: string) {
   store.activeTag = store.activeTag === tag ? '' : tag
+  ensureDashboard()
 }
 
 function formatCount(n: number): string {
@@ -272,8 +290,8 @@ async function deleteCategoryAction(name: string) {
         <span>标签</span>
       </div>
       <div class="min-h-0 flex-1 overflow-y-auto">
-        <div v-if="store.tags.length === 0" class="p-3">
-          <UEmpty description="暂无标签" />
+        <div v-if="store.tags.length === 0" class="px-2.5 py-3 text-xs text-muted">
+          暂无标签
         </div>
         <nav v-else class="flex flex-col gap-0.5">
           <button
@@ -297,6 +315,35 @@ async function deleteCategoryAction(name: string) {
           </button>
         </nav>
       </div>
+    </div>
+
+    <!-- 底部导航：统计 / 设置 -->
+    <div class="flex flex-shrink-0 flex-col gap-0.5 border-t border-default px-3 py-2" :class="collapsed ? 'items-center' : ''">
+      <RouterLink
+        v-for="item in bottomItems"
+        :key="item.to"
+        :to="item.to"
+        custom
+        v-slot="{ isActive, navigate }"
+      >
+        <button
+          class="relative flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted"
+          :class="[
+            isActive ? 'bg-primary/15 text-primary' : 'text-default',
+            collapsed ? 'justify-center py-2.5' : '',
+          ]"
+          :title="collapsed ? item.label : undefined"
+          @click="navigate"
+        >
+          <span
+            class="grid flex-shrink-0 place-items-center"
+            :class="isActive ? 'text-primary' : 'text-muted'"
+          >
+            <UIcon :name="item.icon" class="size-[18px]" />
+          </span>
+          <span v-if="!collapsed" class="flex-1 truncate">{{ item.label }}</span>
+        </button>
+      </RouterLink>
     </div>
 
     <!-- 折叠按钮 -->

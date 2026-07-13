@@ -19,11 +19,11 @@ function progressColor(progress: number): 'success' | 'primary' | 'warning' | 'e
 </script>
 
 <template>
-  <div class="flex flex-col gap-2">
+  <div class="flex flex-col gap-2.5">
     <div
       v-for="torrent in store.sortedTorrents"
       :key="torrent.hash"
-      class="p-3 rounded-lg border bg-elevated cursor-pointer transition-colors active:bg-primary/10"
+      class="cursor-pointer rounded-2xl border bg-default p-3.5 shadow-sm transition-all active:scale-[0.995] active:bg-primary/5"
       :class="store.selectedHashes.has(torrent.hash) ? 'border-primary/50 bg-primary/5' : 'border-default'"
       @click="props.showDetail?.(torrent.hash)"
     >

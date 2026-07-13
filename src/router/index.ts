@@ -22,6 +22,12 @@ const router = createRouter({
           meta: { title: '种子列表' },
         },
         {
+          path: 'stats',
+          name: 'stats',
+          component: () => import('@/views/Stats.vue'),
+          meta: { title: '统计概览' },
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/Settings.vue'),

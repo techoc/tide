@@ -87,9 +87,9 @@ function handleClearAll() {
 </script>
 
 <template>
-  <div class="flex flex-col gap-2">
+  <div class="flex flex-col gap-2 rounded-xl border border-default bg-default px-2.5 py-2 shadow-sm sm:px-3">
     <!-- 搜索字段切换 + 展开按钮 -->
-    <div class="flex items-center gap-2 flex-wrap">
+    <div class="flex items-center gap-1.5 overflow-x-auto sm:flex-wrap">
       <!-- 搜索字段下拉 -->
       <UDropdownMenu :items="searchFieldItems.map((f) => ({
         label: f.label,
@@ -99,7 +99,7 @@ function handleClearAll() {
         <UButton
           icon="i-lucide-search"
           color="neutral"
-          variant="ghost"
+          variant="soft"
           size="xs"
           label="搜索字段"
           trailing-icon="i-lucide-chevron-down"
@@ -160,7 +160,7 @@ function handleClearAll() {
     <!-- 高级筛选面板 -->
     <div
       v-if="expanded"
-      class="flex flex-col gap-3 p-3 bg-elevated/50 rounded-lg border border-default"
+      class="flex flex-col gap-3 rounded-xl border border-default bg-elevated/50 p-3"
     >
       <!-- 大小区间 -->
       <div class="flex items-center gap-2 flex-wrap">

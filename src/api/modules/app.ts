@@ -27,12 +27,14 @@ export async function setPreferences(prefs: Record<string, unknown>): Promise<vo
 
 /** 切换备选速度限制（开/关） */
 export async function toggleAlternativeSpeedLimits(): Promise<void> {
-  await http.post('/app/toggleAlternativeSpeedLimits')
+  // qBittorrent v5 将端点从 /app/toggleAlternativeSpeedLimits 迁移至 /transfer/toggleSpeedLimitsMode
+  await http.post('/transfer/toggleSpeedLimitsMode', form({}))
 }
 
 /** 获取备选速度限制状态（true 表示已启用） */
 export async function getAlternativeSpeedLimitsMode(): Promise<boolean> {
-  const res = await http.get<string>('/app/alternativeSpeedLimitsEnabled')
-  // qBittorrent 返回 "1"/"0" 字符串
-  return res.data === '1'
+  // qBittorrent v5 将端点从 /app/alternativeSpeedLimitsEnabled 迁移至 /transfer/speedLimitsMode
+  const res = await http.get<string>('/transfer/speedLimitsMode')
+  // 返回 "1"/"0"，但 axios 默认 transformResponse 会 JSON.parse 成数字 1/0，需统一为字符串比较
+  return String(res.data) === '1'
 }

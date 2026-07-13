@@ -17,6 +17,8 @@ export const useAuthStore = defineStore(
 
     /** 登录 */
     async function login(addr: string, user: string, pass: string): Promise<void> {
+      clearSession()
+
       // 地址留空时走相对路径（开发环境由 Vite 代理转发到本地 qBittorrent）
       const trimmed = addr.trim()
       if (trimmed) {
@@ -28,18 +30,28 @@ export const useAuthStore = defineStore(
         host.value = fullHost
       } else {
         // 代理模式：baseURL 保持默认 /api/v2
+        setBaseUrl('')
         host.value = ''
       }
       const ok = await apiLogin(user, pass)
       if (!ok) {
         throw new Error('用户名或密码错误')
       }
+      // 登录接口返回成功并不代表浏览器一定保存了 SID Cookie。
+      // 在写入登录状态前校验一次受保护接口，避免进入首页后立刻被 403 踢回登录页。
+      const appVersion = await getAppVersion()
+
       username.value = user
+      version.value = appVersion
       isAuthenticated.value = true
-      // 登录成功后获取版本号（非阻塞）
-      getAppVersion()
-        .then((v) => (version.value = v))
-        .catch(() => {})
+    }
+
+    /** 仅清理本地会话，不再请求后端（用于 401/403 会话失效）。 */
+    function clearSession(): void {
+      isAuthenticated.value = false
+      host.value = ''
+      username.value = ''
+      version.value = ''
     }
 
     /** 登出 */
@@ -48,11 +60,9 @@ export const useAuthStore = defineStore(
         await apiLogout()
       } catch {
         // 忽略登出接口错误
+      } finally {
+        clearSession()
       }
-      isAuthenticated.value = false
-      host.value = ''
-      username.value = ''
-      version.value = ''
     }
 
     /** 应用启动时根据持久化的 host 恢复 baseURL */
@@ -68,6 +78,7 @@ export const useAuthStore = defineStore(
       displayHost,
       login,
       logout,
+      clearSession,
       restoreBaseUrl,
     }
   },

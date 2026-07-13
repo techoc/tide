@@ -46,7 +46,7 @@ src/
 在 `.env` 中配置 qBittorrent 地址（开发时 Vite 代理会转发请求并重写 Origin/Host 以绕过 CSRF）：
 
 ```
-VITE_QB_BASE_URL=http://localhost:8080
+VITE_QB_HOST=http://localhost:8080
 ```
 
 ## 项目初始化

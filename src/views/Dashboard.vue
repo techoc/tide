@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useTorrentListStore } from '@/stores/torrentList'
-import { usePolling } from '@/composables/usePolling'
-import { useSpeedHistory } from '@/composables/useSpeedHistory'
 import { useAddTorrentModal } from '@/composables/useAddTorrent'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import { categoryItems } from '@/stores/settings'
@@ -11,7 +9,6 @@ import TorrentTable from '@/components/torrent/TorrentTable.vue'
 import TorrentCardList from '@/components/torrent/TorrentCardList.vue'
 import BatchToolbar from '@/components/torrent/BatchToolbar.vue'
 import FilterPanel from '@/components/torrent/FilterPanel.vue'
-import StatsOverview from '@/components/torrent/StatsOverview.vue'
 import TorrentContextMenu from '@/components/torrent/TorrentContextMenu.vue'
 import TagSelectorModal from '@/components/torrent/TagSelectorModal.vue'
 import DetailDrawer from '@/components/torrent/DetailDrawer.vue'
@@ -21,13 +18,7 @@ const toast = useToast()
 const confirmDialog = useConfirmDialog()
 const { open: openAdd } = useAddTorrentModal()
 
-// 轮询 transfer 信息（每 2 秒），同时记录速度历史
-// 注意：种子列表和 transfer 轮询已在 MainLayout 中统一管理
-const { push } = useSpeedHistory()
-usePolling(async () => {
-  await store.fetchTransfer()
-  push(store.dlSpeed, store.upSpeed)
-}, 2000)
+// 速度历史轮询已在 MainLayout 中统一管理，此处不再重复
 
 // ===== 键盘快捷键 =====
 
@@ -74,6 +65,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 const currentCategoryLabel = computed(() => {
   const item = categoryItems.find((c) => c.key === store.filter)
   return item?.label ?? '全部'
+})
+
+const currentContext = computed(() => {
+  if (store.activeCategory) {
+    return store.activeCategory === '__uncategorized__' ? '未分类' : store.activeCategory
+  }
+  if (store.activeTag) return `# ${store.activeTag}`
+  return '管理并查看当前 qBittorrent 中的所有任务'
 })
 
 const isEmpty = computed(
@@ -146,27 +145,42 @@ function onAddTag(hash: string) {
 </script>
 
 <template>
-  <div class="dashboard flex flex-col h-full p-4 sm:p-5">
+  <div class="dashboard mx-auto flex h-full w-full max-w-[1800px] flex-col px-3 py-4 sm:px-5 sm:py-5 lg:px-7 lg:py-6">
     <!-- 标题栏 -->
-    <div class="flex items-center justify-between mb-4 shrink-0">
-      <div class="flex items-baseline gap-3">
-        <h2 class="m-0 text-xl font-bold">{{ currentCategoryLabel }}</h2>
-        <span class="text-[13px] text-muted">{{ store.sortedTorrents.length }} 个种子</span>
+    <div class="mb-4 flex shrink-0 items-start justify-between gap-3 sm:mb-5">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2.5">
+          <div class="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+            <UIcon name="i-lucide-download-cloud" class="size-5" />
+          </div>
+          <div class="min-w-0">
+            <div class="flex items-baseline gap-2">
+              <h1 class="m-0 truncate text-xl font-bold tracking-tight sm:text-2xl">{{ currentCategoryLabel }}</h1>
+              <span class="shrink-0 rounded-full bg-elevated px-2 py-0.5 text-xs font-medium tabular-nums text-muted">
+                {{ store.sortedTorrents.length }}
+              </span>
+            </div>
+            <p class="mt-0.5 truncate text-xs text-muted sm:text-sm">{{ currentContext }}</p>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- 统计概览 -->
-    <StatsOverview class="mb-4 shrink-0" />
+    <UInput
+      v-model="store.searchQuery"
+      icon="i-lucide-search"
+      placeholder="搜索种子"
+      class="mb-3 w-full sm:hidden"
+      :ui="{ base: 'rounded-xl bg-default' }"
+    />
 
     <!-- 内容区 -->
-    <div class="flex-1 min-h-0">
+    <div class="flex min-h-0 flex-1 flex-col">
       <!-- 加载态：骨架屏 -->
       <div
         v-if="store.loading && store.torrents.length === 0"
         class="flex flex-col gap-2 h-full"
       >
-        <!-- 骨架统计条 -->
-        <div class="h-20 rounded-lg bg-elevated/50 border border-default animate-pulse" />
         <!-- 骨架表格行 -->
         <div
           v-for="i in 8"
@@ -206,18 +220,18 @@ function onAddTag(hash: string) {
         <BatchToolbar />
 
         <!-- 筛选面板 -->
-        <FilterPanel class="mb-2" />
+        <FilterPanel class="mb-3 shrink-0" />
 
         <!-- 桌面端：表格 -->
         <div
           v-if="!isMobile"
-          class="table-container h-[calc(100%-50px)] rounded-[10px] overflow-hidden bg-default border border-default"
+          class="table-container min-h-0 flex-1 overflow-hidden rounded-2xl border border-default bg-default shadow-sm"
         >
           <TorrentTable :show-detail="showDetail" @contextmenu="onContextMenu" @add-tag="onAddTag" />
         </div>
 
         <!-- 移动端：卡片 -->
-        <div v-else class="cards-container h-[calc(100%-50px)] overflow-y-auto pb-4">
+        <div v-else class="cards-container min-h-0 flex-1 overflow-y-auto pb-4">
           <TorrentCardList :show-detail="showDetail" />
         </div>
       </template>

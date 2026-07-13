@@ -14,7 +14,7 @@ const http: AxiosInstance = axios.create({
 /** 设置后端基地址（用户登录页填写的 host:port） */
 export function setBaseUrl(host: string) {
   const trimmed = host.replace(/\/+$/, '')
-  http.defaults.baseURL = `${trimmed}/api/v2`
+  http.defaults.baseURL = trimmed ? `${trimmed}/api/v2` : '/api/v2'
 }
 
 /** 获取当前基地址 */
@@ -27,7 +27,9 @@ http.interceptors.response.use(
   (res) => res,
   (error) => {
     const status = error?.response?.status
-    if (status === 403) {
+    const requestUrl = String(error?.config?.url ?? '')
+    const isAuthRequest = requestUrl.includes('/auth/login') || requestUrl.includes('/auth/logout')
+    if ((status === 401 || status === 403) && !isAuthRequest) {
       // 认证失效，触发登出（避免循环引用，通过事件通知）
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }

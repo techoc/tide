@@ -89,8 +89,10 @@ export const useTorrentListStore = defineStore('torrentList', () => {
   const reverse = ref(true)
   /** 选中的 hash 集合 */
   const selectedHashes = ref<Set<string>>(new Set())
-  /** 加载状态 */
+  /** 加载状态（仅首次加载时为 true，轮询时不触发，避免列表闪烁） */
   const loading = ref(false)
+  /** 是否已完成首次加载（用于区分首次加载与后续轮询） */
+  const initialized = ref(false)
   /** 标签列表 */
   const tags = ref<string[]>([])
   /** 当前选中标签（空表示不限） */
@@ -294,12 +296,17 @@ export const useTorrentListStore = defineStore('torrentList', () => {
 
   /** 拉取种子列表（全量，客户端筛选） */
   async function fetchTorrents(): Promise<void> {
-    loading.value = true
+    // 仅首次加载显示 loading 遮罩，后续轮询不触发，避免列表闪烁
+    const isFirstLoad = !initialized.value
+    if (isFirstLoad) loading.value = true
     try {
       const list = await getTorrents({ sort: 'added_on', reverse: true })
       torrents.value = list
     } finally {
-      loading.value = false
+      if (isFirstLoad) {
+        initialized.value = true
+        loading.value = false
+      }
     }
   }
 
@@ -342,7 +349,8 @@ export const useTorrentListStore = defineStore('torrentList', () => {
   /** 切换备选限速 */
   async function toggleAltSpeed(): Promise<void> {
     await toggleAlternativeSpeedLimits()
-    await fetchAltSpeedMode()
+    // 乐观更新：立即翻转本地状态，避免 qBittorrent v5 状态更新延迟导致 toast 显示错误
+    altSpeedEnabled.value = !altSpeedEnabled.value
   }
 
   /** 切换筛选分类 */
@@ -513,6 +521,8 @@ export const useTorrentListStore = defineStore('torrentList', () => {
   /** 清空状态（登出时调用） */
   function reset(): void {
     torrents.value = []
+    initialized.value = false
+    loading.value = false
     selectedHashes.value = new Set()
     tags.value = []
     activeTag.value = ''

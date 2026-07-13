@@ -95,11 +95,9 @@ const userMenuItems = [
 </script>
 
 <template>
-  <header
-    class="flex h-14 shrink-0 items-center justify-between border-b border-default bg-default px-4"
-  >
+  <header class="flex h-16 shrink-0 items-center gap-3 border-b border-default bg-default/90 px-3 backdrop-blur-xl sm:px-5">
     <!-- 左侧：移动端菜单 + 全局速度 -->
-    <div class="flex items-center gap-1.5">
+    <div class="flex shrink-0 items-center gap-1.5">
       <UButton
         class="md:hidden"
         icon="i-lucide-menu"
@@ -109,15 +107,15 @@ const userMenuItems = [
         @click="$emit('toggle-sidebar')"
       />
 
-      <div class="ml-2 flex items-center gap-3 md:gap-4">
+      <div class="ml-1 hidden items-center rounded-xl border border-default bg-elevated/60 px-2.5 py-1.5 sm:flex md:gap-3">
         <div
-          class="flex items-center gap-1.5 text-[13px] font-medium tabular-nums text-blue-500"
+          class="flex items-center gap-1.5 text-xs font-semibold tabular-nums text-blue-500"
         >
           <UIcon name="i-lucide-arrow-down" class="size-4" />
           <span>{{ dlSpeed }}</span>
         </div>
         <div
-          class="flex items-center gap-1.5 text-[13px] font-medium tabular-nums text-emerald-500"
+          class="flex items-center gap-1.5 text-xs font-semibold tabular-nums text-emerald-500"
         >
           <UIcon name="i-lucide-arrow-up" class="size-4" />
           <span>{{ upSpeed }}</span>
@@ -126,37 +124,44 @@ const userMenuItems = [
     </div>
 
     <!-- 中间：搜索框（移动端隐藏） -->
-    <UInput
-      ref="searchInput"
-      v-model="store.searchQuery"
-      icon="i-lucide-search"
-      placeholder="搜索种子... (Ctrl+F)"
-      size="sm"
-      class="hidden w-40 sm:block sm:w-56"
-      :ui="{ base: 'h-8' }"
-    />
+    <div class="hidden min-w-0 flex-1 justify-center sm:flex">
+      <UInput
+        ref="searchInput"
+        v-model="store.searchQuery"
+        icon="i-lucide-search"
+        placeholder="搜索种子"
+        size="md"
+        class="w-full max-w-xl"
+        :ui="{ base: 'rounded-xl bg-elevated/60' }"
+      >
+        <template #trailing>
+          <span class="hidden rounded-md border border-default bg-default px-1.5 py-0.5 text-[10px] font-medium text-muted lg:inline">Ctrl F</span>
+        </template>
+      </UInput>
+    </div>
 
     <!-- 右侧：操作按钮 + 主题 + 用户菜单 -->
-    <div class="flex items-center gap-1.5">
+    <div class="ml-auto flex shrink-0 items-center gap-1">
       <!-- 备选限速开关 -->
       <UTooltip :text="store.altSpeedEnabled ? '关闭备选限速' : '开启备选限速'">
         <UButton
           :icon="store.altSpeedEnabled ? 'i-lucide-zap' : 'i-lucide-zap-off'"
           :color="store.altSpeedEnabled ? 'warning' : 'neutral'"
-          :variant="store.altSpeedEnabled ? 'solid' : 'ghost'"
+          :variant="store.altSpeedEnabled ? 'soft' : 'ghost'"
           aria-label="备选限速"
           @click="handleToggleAltSpeed"
         />
       </UTooltip>
 
       <!-- 手动刷新 -->
-      <UTooltip text="刷新列表">
+      <UTooltip text="刷新列表" class="hidden md:block">
         <UButton
           icon="i-lucide-refresh-cw"
           color="neutral"
           variant="ghost"
           :loading="refreshing"
           aria-label="刷新"
+          class="hidden md:inline-flex"
           @click="handleRefresh"
         />
       </UTooltip>
@@ -166,6 +171,7 @@ const userMenuItems = [
         icon="i-lucide-plus"
         color="primary"
         variant="solid"
+        class="rounded-xl shadow-sm shadow-primary/20"
         aria-label="添加种子"
         @click="$emit('add')"
       >
@@ -173,12 +179,13 @@ const userMenuItems = [
       </UButton>
 
       <!-- 主题切换 -->
-      <UTooltip :text="isDark ? '切换到浅色' : '切换到深色'">
+      <UTooltip :text="isDark ? '切换到浅色' : '切换到深色'" class="hidden sm:block">
         <UButton
           :icon="isDark ? 'i-lucide-sun' : 'i-lucide-moon'"
           color="neutral"
           variant="ghost"
           aria-label="切换主题"
+          class="hidden sm:inline-flex"
           @click="toggleTheme"
         />
       </UTooltip>

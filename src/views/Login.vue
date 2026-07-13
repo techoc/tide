@@ -28,9 +28,12 @@ async function handleLogin() {
   loading.value = true
   try {
     await auth.login(form.address, form.username, form.password)
+    const requestedRedirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+    const redirect = requestedRedirect.startsWith('/') && !requestedRedirect.startsWith('/login')
+      ? requestedRedirect
+      : '/'
+    await router.replace(redirect)
     toast.add({ title: '登录成功', color: 'success' })
-    const redirect = (route.query.redirect as string) || '/'
-    router.replace(redirect)
   } catch (err) {
     const e = err as { response?: { data?: string }; message?: string }
     const msg = e?.response?.data || e?.message || '连接失败，请检查地址与凭据'
