@@ -12,6 +12,7 @@ import UIcon from '@nuxt/ui/runtime/vue/components/Icon.vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import type { Torrent, TorrentSort } from '@/types/qbittorrent'
 import { useTorrentListStore } from '@/stores/torrentList'
+import { useSettingsStore } from '@/stores/settings'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
 import {
   pauseTorrents,
@@ -30,8 +31,18 @@ const emit = defineEmits<{
 }>()
 
 const store = useTorrentListStore()
+const settings = useSettingsStore()
 const toast = useToast()
 const confirmDialog = useConfirmDialog()
+
+/** 列表密度对应的行高 */
+const rowHeight = computed(() => {
+  switch (settings.listDensity) {
+    case 'compact': return 36
+    case 'comfortable': return 56
+    default: return 44
+  }
+})
 
 // ===== 列配置（显示/隐藏） =====
 
@@ -524,7 +535,7 @@ const rowVirtualizer = useVirtualizer(
   computed(() => ({
     count: store.sortedTorrents.length,
     getScrollElement: () => scrollContainer.value,
-    estimateSize: () => 44, // 行高估计
+    estimateSize: () => rowHeight.value, // 行高由列表密度控制
     overscan: 8, // 预渲染额外行数
   })),
 )

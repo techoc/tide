@@ -24,6 +24,21 @@ import {
 } from '@/api/modules/torrents'
 import { getTransferInfo, toggleAlternativeSpeedLimits, getAlternativeSpeedLimitsMode, type TransferInfo } from '@/api/modules/app'
 
+/** 保存的智能筛选 */
+export interface SavedFilter {
+  id: string
+  name: string
+  filter: TorrentFilter
+  searchQuery: string
+  searchFields: { name: boolean; hash: boolean; savePath: boolean; tracker: boolean }
+  sizeMin: number
+  sizeMax: number
+  progressMin: number
+  progressMax: number
+  activeTag: string
+  activeCategory: string
+}
+
 /** 判断种子是否匹配某个筛选分类 */
 function matchesFilter(t: Torrent, filter: TorrentFilter): boolean {
   switch (filter) {
@@ -80,8 +95,31 @@ export const useTorrentListStore = defineStore('torrentList', () => {
   const tags = ref<string[]>([])
   /** 当前选中标签（空表示不限） */
   const activeTag = ref('')
-  /** 搜索关键词（按 name 模糊匹配，不区分大小写） */
+  /** 搜索关键词（多字段匹配：name/hash/save_path/tracker） */
   const searchQuery = ref('')
+  /** 搜索字段开关 */
+  const searchFields = ref({
+    name: true,
+    hash: false,
+    savePath: false,
+    tracker: false,
+  })
+  /** 大小区间筛选（bytes，0 = 不限） */
+  const sizeMin = ref(0)
+  const sizeMax = ref(0)
+  /** 进度区间筛选（0-100，0 = 不限） */
+  const progressMin = ref(0)
+  const progressMax = ref(0)
+  /** 保存的智能筛选列表 */
+  const savedFilters = ref<SavedFilter[]>([])
+  const SAVED_FILTERS_KEY = 'tide.savedFilters'
+  // 初始化：从 localStorage 加载已保存的筛选
+  try {
+    const raw = localStorage.getItem(SAVED_FILTERS_KEY)
+    if (raw) savedFilters.value = JSON.parse(raw) as SavedFilter[]
+  } catch {
+    // 忽略
+  }
   /** 分类列表 */
   const categories = ref<TorrentCategory[]>([])
   /** 当前选中分类（空字符串表示"全部"，特殊值 '__uncategorized__' 表示未分类） */
@@ -197,10 +235,35 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     } else if (activeCategory.value) {
       list = list.filter((t) => t.category === activeCategory.value)
     }
-    // 搜索过滤：按 name 模糊匹配，不区分大小写
+    // 搜索过滤：多字段匹配（name/hash/save_path/tracker）
     if (searchQuery.value) {
       const q = searchQuery.value.toLowerCase()
-      list = list.filter((t) => t.name.toLowerCase().includes(q))
+      const sf = searchFields.value
+      list = list.filter((t) => {
+        if (sf.name && t.name.toLowerCase().includes(q)) return true
+        if (sf.hash && t.hash.toLowerCase().includes(q)) return true
+        if (sf.savePath && t.save_path.toLowerCase().includes(q)) return true
+        if (sf.tracker && t.tracker.toLowerCase().includes(q)) return true
+        // 如果所有字段都关闭，回退到 name 匹配
+        if (!sf.name && !sf.hash && !sf.savePath && !sf.tracker) {
+          return t.name.toLowerCase().includes(q)
+        }
+        return false
+      })
+    }
+    // 大小区间筛选
+    if (sizeMin.value > 0) {
+      list = list.filter((t) => t.size >= sizeMin.value)
+    }
+    if (sizeMax.value > 0) {
+      list = list.filter((t) => t.size <= sizeMax.value)
+    }
+    // 进度区间筛选（0-100 转为 0-1）
+    if (progressMin.value > 0) {
+      list = list.filter((t) => t.progress >= progressMin.value / 100)
+    }
+    if (progressMax.value > 0) {
+      list = list.filter((t) => t.progress <= progressMax.value / 100)
     }
     return list
   })
@@ -454,10 +517,77 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     tags.value = []
     activeTag.value = ''
     searchQuery.value = ''
+    sizeMin.value = 0
+    sizeMax.value = 0
+    progressMin.value = 0
+    progressMax.value = 0
     filter.value = 'all'
     categories.value = []
     activeCategory.value = ''
     altSpeedEnabled.value = false
+  }
+
+  // ===== 保存的智能筛选 =====
+
+  /** 保存当前筛选条件为一个智能筛选 */
+  function saveCurrentFilter(name: string): void {
+    const item: SavedFilter = {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name,
+      filter: filter.value,
+      searchQuery: searchQuery.value,
+      searchFields: { ...searchFields.value },
+      sizeMin: sizeMin.value,
+      sizeMax: sizeMax.value,
+      progressMin: progressMin.value,
+      progressMax: progressMax.value,
+      activeTag: activeTag.value,
+      activeCategory: activeCategory.value,
+    }
+    savedFilters.value = [...savedFilters.value, item]
+    persistSavedFilters()
+  }
+
+  /** 应用一个已保存的筛选 */
+  function applySavedFilter(id: string): void {
+    const item = savedFilters.value.find((f) => f.id === id)
+    if (!item) return
+    filter.value = item.filter
+    searchQuery.value = item.searchQuery
+    searchFields.value = { ...item.searchFields }
+    sizeMin.value = item.sizeMin
+    sizeMax.value = item.sizeMax
+    progressMin.value = item.progressMin
+    progressMax.value = item.progressMax
+    activeTag.value = item.activeTag
+    activeCategory.value = item.activeCategory
+  }
+
+  /** 删除一个已保存的筛选 */
+  function deleteSavedFilter(id: string): void {
+    savedFilters.value = savedFilters.value.filter((f) => f.id !== id)
+    persistSavedFilters()
+  }
+
+  /** 清除所有筛选条件（恢复默认） */
+  function clearAllFilters(): void {
+    searchQuery.value = ''
+    searchFields.value = { name: true, hash: false, savePath: false, tracker: false }
+    sizeMin.value = 0
+    sizeMax.value = 0
+    progressMin.value = 0
+    progressMax.value = 0
+    activeTag.value = ''
+    activeCategory.value = ''
+    filter.value = 'all'
+  }
+
+  function persistSavedFilters(): void {
+    try {
+      localStorage.setItem(SAVED_FILTERS_KEY, JSON.stringify(savedFilters.value))
+    } catch {
+      // 忽略
+    }
   }
 
   return {
@@ -470,6 +600,12 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     tags,
     activeTag,
     searchQuery,
+    searchFields,
+    sizeMin,
+    sizeMax,
+    progressMin,
+    progressMax,
+    savedFilters,
     categories,
     activeCategory,
     altSpeedEnabled,
@@ -516,6 +652,10 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     setTorrentLocation,
     exportTorrentFile,
     renameTorrentAction,
+    saveCurrentFilter,
+    applySavedFilter,
+    deleteSavedFilter,
+    clearAllFilters,
     reset,
   }
 })

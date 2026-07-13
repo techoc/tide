@@ -10,6 +10,7 @@ import type { Torrent } from '@/types/qbittorrent'
 import TorrentTable from '@/components/torrent/TorrentTable.vue'
 import TorrentCardList from '@/components/torrent/TorrentCardList.vue'
 import BatchToolbar from '@/components/torrent/BatchToolbar.vue'
+import FilterPanel from '@/components/torrent/FilterPanel.vue'
 import StatsOverview from '@/components/torrent/StatsOverview.vue'
 import TorrentContextMenu from '@/components/torrent/TorrentContextMenu.vue'
 import TagSelectorModal from '@/components/torrent/TagSelectorModal.vue'
@@ -20,10 +21,8 @@ const toast = useToast()
 const confirmDialog = useConfirmDialog()
 const { open: openAdd } = useAddTorrentModal()
 
-// 轮询种子列表（每 2 秒）
-usePolling(store.fetchTorrents, 2000)
-
 // 轮询 transfer 信息（每 2 秒），同时记录速度历史
+// 注意：种子列表和 transfer 轮询已在 MainLayout 中统一管理
 const { push } = useSpeedHistory()
 usePolling(async () => {
   await store.fetchTransfer()
@@ -161,13 +160,25 @@ function onAddTag(hash: string) {
 
     <!-- 内容区 -->
     <div class="flex-1 min-h-0">
-      <!-- 加载态 -->
+      <!-- 加载态：骨架屏 -->
       <div
         v-if="store.loading && store.torrents.length === 0"
-        class="flex flex-col items-center justify-center gap-3 h-full text-muted"
+        class="flex flex-col gap-2 h-full"
       >
-        <UIcon name="i-lucide-loader-circle" class="text-3xl animate-spin" />
-        <p>正在加载种子列表…</p>
+        <!-- 骨架统计条 -->
+        <div class="h-20 rounded-lg bg-elevated/50 border border-default animate-pulse" />
+        <!-- 骨架表格行 -->
+        <div
+          v-for="i in 8"
+          :key="i"
+          class="flex items-center gap-3 h-12 rounded-md bg-elevated/30 animate-pulse"
+          :style="{ animationDelay: `${i * 80}ms` }"
+        >
+          <div class="w-4 h-4 ml-3 rounded bg-elevated" />
+          <div class="flex-1 h-4 rounded bg-elevated" />
+          <div class="w-20 h-4 rounded bg-elevated" />
+          <div class="w-16 h-4 mr-3 rounded bg-elevated" />
+        </div>
       </div>
 
       <!-- 空状态 -->
@@ -193,6 +204,9 @@ function onAddTag(hash: string) {
       <template v-else>
         <!-- 批量操作栏 -->
         <BatchToolbar />
+
+        <!-- 筛选面板 -->
+        <FilterPanel class="mb-2" />
 
         <!-- 桌面端：表格 -->
         <div

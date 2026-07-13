@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import AppTopbar from '@/components/layout/AppTopbar.vue'
 import AddTorrentModal from '@/components/torrent/AddTorrentModal.vue'
@@ -17,8 +17,15 @@ const mobileDrawer = ref(false)
 // 添加种子弹窗（共享状态）
 const { show: addModalShow, open: openAdd } = useAddTorrentModal()
 
+// 种子列表轮询间隔（响应式，从设置读取）
+const torrentInterval = computed(() => settings.refreshInterval)
+// 全局传输信息轮询间隔
+const transferInterval = computed(() => settings.refreshInterval)
+
+// 轮询种子列表（间隔由设置控制，0 = 暂停）
+usePolling(store.fetchTorrents, torrentInterval)
 // 轮询全局传输信息（顶部速度条）
-usePolling(store.fetchTransfer, 2000)
+usePolling(store.fetchTransfer, transferInterval)
 // 标签列表（低频）
 usePolling(store.fetchTags, 30000)
 // 分类列表（低频）

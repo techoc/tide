@@ -205,3 +205,20 @@ export async function exportTorrent(hash: string): Promise<Blob> {
 export async function renameTorrent(hash: string, name: string): Promise<void> {
   await http.post('/torrents/rename', form({ hash, name }))
 }
+
+// ===== Tracker 管理 =====
+
+/** 添加 Tracker */
+export async function addTrackers(hash: string, urls: string): Promise<void> {
+  await http.post('/torrents/addTrackers', form({ hash, urls }))
+}
+
+/** 删除 Tracker */
+export async function removeTrackers(hash: string, urls: string): Promise<void> {
+  await http.post('/torrents/removeTrackers', form({ hash, urls }))
+}
+
+/** 重命名种子文件 */
+export async function renameFile(hash: string, oldPath: string, newPath: string): Promise<void> {
+  await http.post('/torrents/renameFile', form({ hash, oldPath, newPath }))
+}

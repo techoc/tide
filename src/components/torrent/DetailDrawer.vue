@@ -2,6 +2,7 @@
 import { ref, computed, watch, h } from 'vue'
 import type { TableColumn } from '@nuxt/ui'
 // 以下组件仅用于 h() 渲染，需显式导入
+import UCheckbox from '@nuxt/ui/components/Checkbox.vue'
 import UProgress from '@nuxt/ui/components/Progress.vue'
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
@@ -17,6 +18,8 @@ import {
   getTorrentTrackers,
   getTorrentPeers,
   setFilePriority,
+  addTrackers,
+  removeTrackers,
 } from '@/api/modules/torrents'
 import { formatSize, formatSpeed, formatTimestamp, formatRatio, formatProgress } from '@/utils/format'
 import { getStateMeta } from '@/utils/state'
@@ -246,6 +249,19 @@ function priorityLabel(priority: number): string {
 /** 文件列表列定义 */
 const fileColumns: TableColumn<TorrentFile>[] = [
   {
+    id: 'select',
+    header: '',
+    cell: ({ row }) =>
+      h(UCheckbox, {
+        'modelValue': selectedFileIndexes.value.has(row.original.index),
+        'onUpdate:modelValue': (val: unknown) => {
+          if (val !== 'indeterminate') toggleFileSelect(row.original.index)
+        },
+        class: 'cursor-pointer',
+      }),
+    size: 40,
+  },
+  {
     accessorKey: 'name',
     header: '文件名',
     cell: ({ row }) => h('span', { class: 'truncate' }, row.original.name),
@@ -408,6 +424,102 @@ const peerColumns: TableColumn<PeerRow>[] = [
 const peerList = computed(() =>
   peers.value ? Object.values(peers.value.peers) : [],
 )
+
+// ===== Peers 排序 =====
+const peerSortKey = ref<'ip' | 'client' | 'progress' | 'dl_speed' | 'up_speed' | 'country_code' | null>(null)
+const peerSortReverse = ref(false)
+
+/** 排序后的 Peers 列表 */
+const sortedPeerList = computed(() => {
+  if (!peerSortKey.value) return peerList.value
+  const key = peerSortKey.value
+  const list = [...peerList.value]
+  list.sort((a, b) => {
+    let cmp = 0
+    if (key === 'progress') {
+      cmp = a.progress - b.progress
+    } else if (key === 'dl_speed' || key === 'up_speed') {
+      cmp = a[key] - b[key]
+    } else {
+      cmp = String(a[key]).localeCompare(String(b[key]))
+    }
+    return peerSortReverse.value ? -cmp : cmp
+  })
+  return list
+})
+
+/** 切换 Peers 排序 */
+function togglePeerSort(key: 'ip' | 'client' | 'progress' | 'dl_speed' | 'up_speed' | 'country_code') {
+  if (peerSortKey.value === key) {
+    peerSortReverse.value = !peerSortReverse.value
+  } else {
+    peerSortKey.value = key
+    peerSortReverse.value = false
+  }
+}
+
+// ===== Tracker 管理 =====
+const trackerInput = ref('')
+const trackerAdding = ref(false)
+
+/** 添加 Tracker */
+async function handleAddTracker() {
+  if (!props.hash || !trackerInput.value.trim()) return
+  trackerAdding.value = true
+  try {
+    await addTrackers(props.hash, trackerInput.value.trim())
+    toast.add({ title: 'Tracker 已添加', color: 'success' })
+    trackerInput.value = ''
+    trackers.value = await getTorrentTrackers(props.hash)
+  } catch {
+    toast.add({ title: '添加 Tracker 失败', color: 'error' })
+  } finally {
+    trackerAdding.value = false
+  }
+}
+
+/** 删除 Tracker */
+async function handleRemoveTracker(url: string) {
+  if (!props.hash) return
+  try {
+    await removeTrackers(props.hash, url)
+    toast.add({ title: 'Tracker 已删除', color: 'success' })
+    trackers.value = await getTorrentTrackers(props.hash)
+  } catch {
+    toast.add({ title: '删除 Tracker 失败', color: 'error' })
+  }
+}
+
+// ===== 文件批量优先级 =====
+const selectedFileIndexes = ref<Set<number>>(new Set())
+
+/** 切换文件选中 */
+function toggleFileSelect(index: number) {
+  const next = new Set(selectedFileIndexes.value)
+  if (next.has(index)) next.delete(index)
+  else next.add(index)
+  selectedFileIndexes.value = next
+}
+
+/** 批量设置文件优先级 */
+async function handleBatchPriority(priority: 0 | 1 | 6 | 7) {
+  if (!props.hash || selectedFileIndexes.value.size === 0) return
+  try {
+    await setFilePriority(props.hash, [...selectedFileIndexes.value], priority)
+    toast.add({ title: `已批量设置 ${selectedFileIndexes.value.size} 个文件`, color: 'success' })
+    selectedFileIndexes.value = new Set()
+    files.value = await getTorrentFiles(props.hash)
+  } catch {
+    toast.add({ title: '批量设置失败', color: 'error' })
+  }
+}
+
+// hash 变化时清空文件选中
+watch(() => props.hash, () => {
+  selectedFileIndexes.value = new Set()
+  peerSortKey.value = null
+  peerSortReverse.value = false
+})
 </script>
 
 <template>
@@ -660,6 +772,18 @@ const peerList = computed(() =>
 
           <!-- 文件列表 -->
           <template #files>
+            <!-- 批量操作栏 -->
+            <div v-if="files.length && selectedFileIndexes.size > 0" class="flex items-center gap-2 mb-2 p-2 bg-primary/10 border border-primary/30 rounded-lg">
+              <span class="text-sm text-primary">已选 {{ selectedFileIndexes.size }} 个文件</span>
+              <UButton size="xs" color="neutral" variant="ghost" label="清除" @click="() => { selectedFileIndexes = new Set() }" />
+              <div class="flex gap-1 ml-auto">
+                <UButton size="xs" color="neutral" variant="soft" label="跳过" @click="handleBatchPriority(0)" />
+                <UButton size="xs" color="neutral" variant="soft" label="普通" @click="handleBatchPriority(1)" />
+                <UButton size="xs" color="warning" variant="soft" label="高" @click="handleBatchPriority(6)" />
+                <UButton size="xs" color="error" variant="soft" label="最高" @click="handleBatchPriority(7)" />
+              </div>
+            </div>
+
             <UTable
               v-if="files.length"
               :data="files"
@@ -674,12 +798,54 @@ const peerList = computed(() =>
 
           <!-- Tracker -->
           <template #trackers>
-            <UTable
-              v-if="trackers.length"
-              :data="trackers"
-              :columns="trackerColumns"
-              :loading="loading"
-            />
+            <!-- 添加 Tracker 输入区 -->
+            <div class="flex gap-2 mb-3">
+              <UInput
+                v-model="trackerInput"
+                placeholder="输入 Tracker URL，每行一个"
+                class="flex-1"
+                :loading="trackerAdding"
+                @keyup.enter="handleAddTracker"
+              />
+              <UButton
+                color="primary"
+                icon="i-lucide-plus"
+                :loading="trackerAdding"
+                label="添加"
+                @click="handleAddTracker"
+              />
+            </div>
+
+            <div v-if="trackers.length" class="flex flex-col gap-1">
+              <div
+                v-for="(t, i) in trackers"
+                :key="i"
+                class="flex items-center gap-2 p-2 rounded-md hover:bg-elevated/50 group"
+              >
+                <UIcon name="i-lucide-globe" class="size-4 text-muted shrink-0" />
+                <div class="flex-1 min-w-0 flex flex-col gap-0.5">
+                  <span class="text-xs truncate">{{ t.url }}</span>
+                  <div class="flex items-center gap-2 text-[11px] text-muted">
+                    <UBadge
+                      :label="t.status === 2 ? '工作中' : t.status === 3 ? '更新中' : t.status === 4 ? '未工作' : t.status === 1 ? '未联系' : '已禁用'"
+                      :color="t.status === 2 ? 'success' : t.status === 4 ? 'error' : t.status === 3 ? 'warning' : 'neutral'"
+                      variant="subtle"
+                      size="xs"
+                    />
+                    <span>种子: {{ t.num_seeds }}</span>
+                    <span>下载者: {{ t.num_leeches }}</span>
+                  </div>
+                </div>
+                <UButton
+                  icon="i-lucide-trash"
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  class="opacity-0 group-hover:opacity-100 transition-opacity"
+                  @click="handleRemoveTracker(t.url)"
+                />
+              </div>
+            </div>
             <div v-else-if="loading" class="flex items-center justify-center py-12">
               <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-muted" />
             </div>
@@ -688,12 +854,37 @@ const peerList = computed(() =>
 
           <!-- 对等方 -->
           <template #peers>
-            <UTable
-              v-if="peerList.length"
-              :data="peerList"
-              :columns="peerColumns"
-              :loading="loading"
-            />
+            <!-- Peers 排序表头 -->
+            <div v-if="sortedPeerList.length" class="flex items-center gap-1 mb-2 px-2 text-xs text-muted">
+              <button class="hover:text-primary transition-colors" @click="togglePeerSort('ip')">IP:端口</button>
+              <span>|</span>
+              <button class="hover:text-primary transition-colors" @click="togglePeerSort('client')">客户端</button>
+              <span>|</span>
+              <button class="hover:text-primary transition-colors" @click="togglePeerSort('progress')">进度</button>
+              <span>|</span>
+              <button class="hover:text-primary transition-colors" @click="togglePeerSort('dl_speed')">↓速度</button>
+              <span>|</span>
+              <button class="hover:text-primary transition-colors" @click="togglePeerSort('up_speed')">↑速度</button>
+              <span>|</span>
+              <button class="hover:text-primary transition-colors" @click="togglePeerSort('country_code')">地区</button>
+            </div>
+
+            <div v-if="sortedPeerList.length" class="flex flex-col gap-0.5 max-h-[400px] overflow-y-auto">
+              <div
+                v-for="(p, i) in sortedPeerList"
+                :key="i"
+                class="flex items-center gap-3 px-2 py-1.5 rounded-md hover:bg-elevated/50 text-xs"
+              >
+                <div class="flex items-center gap-1.5 min-w-0 w-[160px]">
+                  <span v-if="p.country_code" class="text-base">{{ p.country_code }}</span>
+                  <span class="font-mono truncate">{{ p.ip }}:{{ p.port }}</span>
+                </div>
+                <span class="flex-1 truncate text-muted">{{ p.client || '—' }}</span>
+                <span class="w-10 text-right tabular-nums">{{ formatProgress(p.progress) }}%</span>
+                <span class="w-16 text-right tabular-nums text-blue-500">{{ p.dl_speed > 0 ? formatSpeed(p.dl_speed) : '—' }}</span>
+                <span class="w-16 text-right tabular-nums text-emerald-500">{{ p.up_speed > 0 ? formatSpeed(p.up_speed) : '—' }}</span>
+              </div>
+            </div>
             <div v-else-if="loading" class="flex items-center justify-center py-12">
               <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin text-muted" />
             </div>

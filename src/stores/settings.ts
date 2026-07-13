@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import type { TorrentFilter, TorrentSort } from '@/types/qbittorrent'
 
 export type ThemeMode = 'dark' | 'light'
+export type ListDensity = 'compact' | 'default' | 'comfortable'
 
 export const useSettingsStore = defineStore(
   'settings',
@@ -13,6 +14,14 @@ export const useSettingsStore = defineStore(
     const language = ref<'zh' | 'en'>('zh')
     /** 侧边栏折叠状态 */
     const sidebarCollapsed = ref(false)
+    /** 自动刷新间隔（毫秒，0 = 暂停） */
+    const refreshInterval = ref(2000)
+    /** 默认排序字段 */
+    const defaultSort = ref<TorrentSort>('added_on')
+    /** 默认排序是否倒序 */
+    const defaultReverse = ref(true)
+    /** 列表密度 */
+    const listDensity = ref<ListDensity>('default')
 
     const isDark = computed(() => theme.value === 'dark')
 
@@ -32,6 +41,10 @@ export const useSettingsStore = defineStore(
       theme,
       language,
       sidebarCollapsed,
+      refreshInterval,
+      defaultSort,
+      defaultReverse,
+      listDensity,
       isDark,
       toggleTheme,
       setTheme,
