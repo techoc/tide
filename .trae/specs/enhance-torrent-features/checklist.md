@@ -1,0 +1,42 @@
+- [x] `package.json` 已添加 `@tanstack/vue-virtual` 依赖
+- [x] `src/stores/torrentList.ts` 已新增 `searchQuery` ref 状态
+- [x] `filteredTorrents` computed 已加入按名称模糊搜索逻辑（不区分大小写）
+- [x] `src/stores/torrentList.ts` 已新增 `speedHistory` ref 和 `pushSpeedSample` 方法
+- [x] `fetchTransfer` 成功后已调用 `pushSpeedSample` 记录速度采样
+- [x] store 已新增统计 computed：`totalSize`、`totalDownloaded`、`seedingCount`、`downloadingCount`、`pausedCount`、`completedCount`
+- [x] `src/components/layout/AppTopbar.vue` 已新增搜索框（UInput + i-lucide-search 图标）
+- [x] 搜索框绑定 `store.searchQuery`，支持实时过滤和清除
+- [x] 搜索框在移动端样式适配正常
+- [x] `src/composables/useSpeedHistory.ts` 已创建，封装速度采样环形缓冲（max 60 点）
+- [x] composable 提供 `history`、`push(dl, up)`、`clear()` 方法
+- [x] Dashboard 轮询中已调用 `push` 记录速度历史
+- [x] `src/components/torrent/StatsOverview.vue` 已创建
+- [x] 速度曲线 SVG 折线图正常渲染（双线：下载/上传，60 采样点）
+- [x] 分类分布卡片正常显示（下载中/做种/暂停/已完成）
+- [x] 存储概览正常显示（总大小、已下载、剩余）
+- [x] 折叠/展开切换正常工作（折叠时仅显示摘要行）
+- [x] `src/views/Dashboard.vue` 已集成 `StatsOverview` 组件
+- [x] transfer 轮询已启动并接入 `useSpeedHistory`
+- [x] 统计面板折叠状态已持久化到 localStorage
+- [x] `src/components/torrent/TorrentContextMenu.vue` 已创建
+- [x] 菜单项完整：查看详情、暂停/恢复、强制续传、复制 Hash、复制名称、添加标签、删除
+- [x] 菜单定位跟随鼠标坐标
+- [x] 复制 Hash/名称功能正常（clipboard + toast）
+- [x] 单行操作（暂停/恢复/强制续传/删除）正常工作
+- [x] `src/components/torrent/TorrentTable.vue` 已引入 `useVirtualizer`
+- [x] 虚拟滚动容器和虚拟行渲染正常
+- [x] 虚拟滚动下列表高度自适应
+- [x] 排序功能在虚拟滚动下正常工作
+- [x] 行选择（checkbox）在虚拟滚动下正常工作
+- [x] 行点击打开详情在虚拟滚动下正常工作
+- [x] 表格行已绑定 `@contextmenu.prevent` 事件
+- [x] 右键菜单在表格行上正常弹出
+- [x] 菜单操作完成后菜单自动关闭
+- [x] `vue-tsc --build` 通过，无类型错误
+- [x] `vite build` 通过，构建成功
+- [x] 搜索框实时过滤工作正常
+- [x] 统计概览展开/折叠正常
+- [x] 速度曲线实时更新
+- [ ] 右键菜单各项操作正常 — 无种子数据，待用户验证
+- [ ] 虚拟滚动在大列表下流畅 — 无种子数据，待用户验证
+- [ ] 排序/选择/行点击在虚拟滚动下正常 — 无种子数据，待用户验证

@@ -1,0 +1,42 @@
+- [x] `package.json` 中已移除 `naive-ui` 和 `@vicons/ionicons5` 依赖，已添加 `@nuxt/ui`
+- [x] `vite.config.ts` 已添加 `@nuxt/ui/vite` 插件
+- [x] `src/main.ts` 已添加 `@nuxt/ui/vue-plugin` 插件注册
+- [x] `src/assets/main.css` 已更新为 `@import "tailwindcss"; @import "@nuxt/ui";`
+- [x] `tsconfig.app.json` 已添加 `#build/ui/*` 路径别名和 `auto-imports.d.ts`、`components.d.ts`
+- [x] `.gitignore` 已添加 `auto-imports.d.ts` 和 `components.d.ts`
+- [x] `src/App.vue` 已用 `UApp` 替代 `NConfigProvider + NMessageProvider + NDialogProvider`
+- [x] `app.config.ts` 已配置主题色（primary: blue, neutral: slate）
+- [x] `src/stores/settings.ts` 已集成 `useColorMode`，主题切换通过 `.dark` class 控制
+- [x] `src/utils/state.ts` 图标已改为 Iconify 字符串格式（`i-lucide-xxx`）
+- [x] 所有组件中的 `NIcon` 已替换为 `UIcon` 或 `icon` prop
+- [x] `src/layouts/MainLayout.vue` 已用 Tailwind CSS flexbox 替代 `NLayout`/`NLayoutSider`
+- [x] 侧边栏折叠通过 CSS class 控制 width，不再依赖 NLayoutSider
+- [x] `src/components/layout/AppSidebar.vue` 已替换所有 naive-ui 组件
+- [x] `src/components/layout/AppTopbar.vue` 已替换所有 naive-ui 组件，`useMessage` → `useToast`
+- [x] `src/components/torrent/TorrentTable.vue` 已用 `UTable`（TanStack Table）替代 `NDataTable`
+- [x] 表格支持列排序（TanStack `getSortedRowModel`，采用 `manualSorting: true` 同步到 `store.sort`/`store.reverse`）
+- [x] 表格支持行选择（TanStack `rowSelection` + `enableRowSelection`，通过 `getRowId` 同步到 `store.selectedHashes`）
+- [ ] 表格支持虚拟滚动（`UScrollArea` 或 `@tanstack/vue-virtual`）— 用户已明确要求"虚拟滚动先用普通模式"，此检查点延后
+- [x] 表格保留行点击打开详情功能（`@select` 事件，排除 checkbox 区域）
+- [x] `src/components/torrent/TorrentCardList.vue` 已替换所有 naive-ui 组件
+- [x] `src/components/torrent/DetailDrawer.vue` 已用 `USlideover` 替代 `NDrawer`
+- [x] 详情抽屉用 `UTabs`（items 数组）替代 `NTabs`/`NTabPane`
+- [x] 文件/Tracker/Peers 列表用 `UTable` 渲染
+- [x] `src/components/torrent/BatchToolbar.vue` 已替换所有 naive-ui 组件
+- [x] 已创建 `useConfirmDialog` composable 替代 `NPopconfirm`
+- [x] 标签操作弹窗用 `UModal` + `UInput` 组合实现
+- [x] `src/components/torrent/AddTorrentModal.vue` 已用 `UModal` 替代 `NModal`
+- [x] 文件上传用原生 input 或 `UButton` 触发替代 `NUpload`
+- [x] `src/views/Login.vue` 已用 `UForm` + `UInput` + `UButton` 替代 naive-ui 表单
+- [x] `src/views/Settings.vue` 已用 `UForm` + `UInput`/`USelect`/`USwitch` 替代 naive-ui 表单
+- [x] `src/views/Dashboard.vue` 已移除所有 naive-ui 组件引用
+- [x] `vue-tsc --build` 通过，无类型错误
+- [x] `vite build` 通过，构建成功
+- [x] 登录页正常渲染，表单可提交
+- [x] 主布局正常渲染（侧边栏/顶栏/内容区）
+- [ ] 种子列表表格正常渲染，排序/选择/行点击工作 — 无种子数据，待用户验证
+- [ ] 详情抽屉 4 个标签页正常加载 — 无种子数据，待用户验证
+- [ ] 批量操作（暂停/恢复/标签/删除确认）工作 — 无种子数据，待用户验证
+- [x] 添加种子弹窗正常工作
+- [x] 主题切换正常工作（暗色/亮色）
+- [x] 侧边栏折叠/展开正常工作
