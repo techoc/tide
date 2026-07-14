@@ -7,8 +7,11 @@ import {
   addRssFolder,
   getRssItems,
   markRssAsRead,
+  moveRssItem,
   refreshRssItem,
   removeRssItem,
+  setRssFeedRefreshInterval,
+  setRssFeedUrl,
 } from '@/api/modules/rss'
 import type { RSSArticle, RSSItem } from '@/types/qbittorrent'
 
@@ -28,6 +31,8 @@ const showAdd = ref(false)
 const addMode = ref<'feed' | 'folder'>('feed')
 const addForm = ref({ name: '', url: '', refreshInterval: 0 })
 const saving = ref(false)
+const showEdit = ref(false)
+const editForm = ref({ path: '', url: '', refreshInterval: 0 })
 
 function flatten(source: Record<string, RSSItem>, parent = ''): FlatRssItem[] {
   const result: FlatRssItem[] = []
@@ -109,6 +114,38 @@ async function handleRead(article?: RSSArticle) {
   await refresh()
 }
 
+function openEdit() {
+  if (!selected.value || selected.value.folder) return
+  editForm.value = {
+    path: selected.value.path,
+    url: selected.value.url ?? '',
+    refreshInterval: 0,
+  }
+  showEdit.value = true
+}
+
+async function handleEdit() {
+  if (!selected.value) return
+  const oldPath = selected.value.path
+  const newPath = editForm.value.path.trim()
+  saving.value = true
+  try {
+    if (editForm.value.url.trim() && editForm.value.url.trim() !== selected.value.url) {
+      await setRssFeedUrl(oldPath, editForm.value.url.trim())
+    }
+    await setRssFeedRefreshInterval(oldPath, editForm.value.refreshInterval)
+    if (newPath && newPath !== oldPath) await moveRssItem(oldPath, newPath)
+    selectedPath.value = newPath || oldPath
+    showEdit.value = false
+    await refresh()
+    toast.add({ title: 'RSS 订阅已更新', color: 'success' })
+  } catch {
+    toast.add({ title: '更新失败', color: 'error' })
+  } finally {
+    saving.value = false
+  }
+}
+
 void refresh()
 </script>
 
@@ -143,6 +180,7 @@ void refresh()
               <p v-if="selected.url" class="truncate text-xs text-muted">{{ selected.url }}</p>
             </div>
             <div class="flex gap-1">
+              <UButton v-if="!selected.folder" icon="i-lucide-pencil" color="neutral" variant="ghost" size="sm" @click="openEdit">编辑</UButton>
               <UButton icon="i-lucide-refresh-cw" color="neutral" variant="ghost" size="sm" @click="handleRefreshItem">刷新</UButton>
               <UButton icon="i-lucide-check-check" color="neutral" variant="ghost" size="sm" @click="handleRead()">全部已读</UButton>
               <UButton icon="i-lucide-trash" color="error" variant="ghost" size="sm" @click="handleRemove">删除</UButton>
@@ -179,6 +217,22 @@ void refresh()
         <div class="flex w-full justify-end gap-2">
           <UButton color="neutral" variant="ghost" @click="() => { showAdd = false }">取消</UButton>
           <UButton :loading="saving" @click="handleAdd">保存</UButton>
+        </div>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="showEdit" title="编辑 RSS 订阅">
+      <template #body>
+        <div class="flex flex-col gap-4">
+          <UFormField label="订阅路径"><UInput v-model="editForm.path" class="w-full" /></UFormField>
+          <UFormField label="订阅地址"><UInput v-model="editForm.url" class="w-full" /></UFormField>
+          <UFormField label="刷新间隔（秒）"><UInputNumber v-model="editForm.refreshInterval" :min="0" class="w-full" /></UFormField>
+        </div>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <UButton color="neutral" variant="ghost" @click="() => { showEdit = false }">取消</UButton>
+          <UButton :loading="saving" @click="handleEdit">保存</UButton>
         </div>
       </template>
     </UModal>
