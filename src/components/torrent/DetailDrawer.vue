@@ -39,7 +39,7 @@ import {
   formatEta,
   formatDuration,
 } from '@/utils/format'
-import { getStateMeta } from '@/utils/state'
+import { getStateMeta, isPaused as isPausedState } from '@/utils/state'
 
 const props = defineProps<{ hash: string | null }>()
 const emit = defineEmits<{ 'update:hash': [value: string | null] }>()
@@ -80,9 +80,7 @@ const stateMeta = computed(() =>
 )
 
 const isPaused = computed(() =>
-  torrent.value
-    ? ['pausedUP', 'pausedDL', 'stoppedUP', 'stoppedDL'].includes(torrent.value.state)
-    : false,
+  torrent.value ? isPausedState(torrent.value.state) : false,
 )
 
 // 加载详情数据

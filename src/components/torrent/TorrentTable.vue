@@ -21,7 +21,7 @@ import {
   deleteTorrents,
 } from '@/api/modules/torrents'
 import { formatSize, formatSpeed, formatEta, formatRatio, formatProgress } from '@/utils/format'
-import { getStateMeta } from '@/utils/state'
+import { getStateMeta, isPaused } from '@/utils/state'
 
 const props = defineProps<{ showDetail?: (hash: string) => void }>()
 
@@ -93,14 +93,9 @@ const columnMenuItems = computed(() =>
 
 // ===== 行内操作下拉菜单 =====
 
-/** 暂停状态判断 */
-function isPausedTorrent(t: Torrent): boolean {
-  return ['pausedUP', 'pausedDL', 'stoppedUP', 'stoppedDL'].includes(t.state)
-}
-
 /** 构造操作菜单项 */
 function buildActionItems(torrent: Torrent) {
-  const paused = isPausedTorrent(torrent)
+  const paused = isPaused(torrent.state)
   return [
     { label: '查看详情', icon: 'i-lucide-info', onSelect: () => props.showDetail?.(torrent.hash) },
     { type: 'separator' as const },

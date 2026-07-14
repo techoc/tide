@@ -26,17 +26,18 @@ const { open: openAdd } = useAddTorrentModal()
 
 /** Delete 键删除选中种子 */
 async function handleDeleteSelected() {
-  if (store.selectedCount === 0) return
+  const count = store.selectedCount
+  if (count === 0) return
   const confirmed = await confirmDialog.confirm({
     title: '删除种子',
-    description: `确认删除选中的 ${store.selectedCount} 个种子？（不删除文件）`,
+    description: `确认删除选中的 ${count} 个种子？（不删除文件）`,
     confirmText: '确认删除',
     variant: 'error',
   })
   if (!confirmed) return
   try {
     await store.deleteSelected(false)
-    toast.add({ title: `已删除 ${store.selectedCount} 个种子`, color: 'success' })
+    toast.add({ title: `已删除 ${count} 个种子`, color: 'success' })
   } catch {
     toast.add({ title: '删除失败', color: 'error' })
   }

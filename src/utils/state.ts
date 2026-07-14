@@ -30,6 +30,13 @@ const stateMap: Record<TorrentState, StateMeta> = {
   moving: { icon: 'i-lucide-refresh-cw', color: '#f0a020', label: '移动中' },
 }
 
+const pausedStates = new Set<TorrentState>([
+  'pausedUP',
+  'pausedDL',
+  'stoppedUP',
+  'stoppedDL',
+])
+
 /** 获取状态元信息 */
 export function getStateMeta(state: TorrentState): StateMeta {
   return stateMap[state] ?? { icon: 'i-lucide-alert-circle', color: '#909399', label: state }
@@ -47,5 +54,5 @@ export function isSeeding(state: TorrentState): boolean {
 
 /** 是否已暂停 */
 export function isPaused(state: TorrentState): boolean {
-  return state === 'pausedUP' || state === 'pausedDL' || state === 'stoppedUP' || state === 'stoppedDL'
+  return pausedStates.has(state)
 }

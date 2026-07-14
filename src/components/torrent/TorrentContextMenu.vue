@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { Torrent } from '@/types/qbittorrent'
 import { useTorrentListStore } from '@/stores/torrentList'
 import { useConfirmDialog } from '@/composables/useConfirmDialog'
+import { isPaused as isPausedState } from '@/utils/state'
 import {
   pauseTorrents,
   resumeTorrents,
@@ -26,10 +27,9 @@ const store = useTorrentListStore()
 const toast = useToast()
 const confirmDialog = useConfirmDialog()
 
-/** 暂停状态：pausedUP/pausedDL/stoppedUP/stoppedDL 视为已暂停 */
 const isPaused = computed(() => {
   if (!props.torrent) return false
-  return ['pausedUP', 'pausedDL', 'stoppedUP', 'stoppedDL'].includes(props.torrent.state)
+  return isPausedState(props.torrent.state)
 })
 
 /** 边界处理，确保菜单不超出视口右侧 */

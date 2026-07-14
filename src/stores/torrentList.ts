@@ -24,6 +24,7 @@ import {
   renameTorrent,
 } from '@/api/modules/torrents'
 import { getTransferInfo, toggleAlternativeSpeedLimits, getAlternativeSpeedLimitsMode, type TransferInfo } from '@/api/modules/app'
+import { isPaused } from '@/utils/state'
 
 /** 保存的智能筛选 */
 export interface SavedFilter {
@@ -61,13 +62,13 @@ function matchesFilter(t: Torrent, filter: TorrentFilter): boolean {
     case 'completed':
       return t.progress >= 1
     case 'paused':
-      return t.state === 'pausedUP' || t.state === 'pausedDL' || t.state === 'stoppedUP' || t.state === 'stoppedDL'
+      return isPaused(t.state)
     case 'active':
       return t.dlspeed > 0 || t.upspeed > 0
     case 'inactive':
       return t.dlspeed === 0 && t.upspeed === 0
     case 'resumed':
-      return t.state !== 'pausedUP' && t.state !== 'pausedDL' && t.state !== 'stoppedUP' && t.state !== 'stoppedDL'
+      return !isPaused(t.state)
     case 'stalled':
       return t.state === 'stalledUP' || t.state === 'stalledDL'
     case 'stalled_uploading':
@@ -164,10 +165,19 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     return result
   })
 
+  /** 全量列表汇总，避免多个统计字段分别遍历大数组 */
+  const torrentSummary = computed(() => {
+    let totalSize = 0
+    let totalDownloaded = 0
+    for (const torrent of torrents.value) {
+      totalSize += torrent.size
+      totalDownloaded += torrent.downloaded
+    }
+    return { totalSize, totalDownloaded }
+  })
+
   /** 所有种子的总大小（size 之和） */
-  const totalSize = computed(() =>
-    torrents.value.reduce((sum, t) => sum + t.size, 0),
-  )
+  const totalSize = computed(() => torrentSummary.value.totalSize)
 
   /** 每个标签下的种子数量 */
   const tagCounts = computed<Record<string, number>>(() => {
@@ -196,31 +206,19 @@ export const useTorrentListStore = defineStore('torrentList', () => {
   const uncategorizedCount = computed(() => categoryCounts.value[''] ?? 0)
 
   /** 所有种子的已下载总量（downloaded 之和） */
-  const totalDownloaded = computed(() =>
-    torrents.value.reduce((sum, t) => sum + t.downloaded, 0),
-  )
+  const totalDownloaded = computed(() => torrentSummary.value.totalDownloaded)
 
   /** 做种中的种子数 */
-  const seedingCount = computed(
-    () =>
-      torrents.value.filter((t) => matchesFilter(t, 'seeding')).length,
-  )
+  const seedingCount = computed(() => counts.value.seeding)
 
   /** 下载中的种子数 */
-  const downloadingCount = computed(
-    () =>
-      torrents.value.filter((t) => matchesFilter(t, 'downloading')).length,
-  )
+  const downloadingCount = computed(() => counts.value.downloading)
 
   /** 暂停的种子数 */
-  const pausedCount = computed(
-    () => torrents.value.filter((t) => matchesFilter(t, 'paused')).length,
-  )
+  const pausedCount = computed(() => counts.value.paused)
 
   /** 已完成的种子数（progress >= 1） */
-  const completedCount = computed(
-    () => torrents.value.filter((t) => matchesFilter(t, 'completed')).length,
-  )
+  const completedCount = computed(() => counts.value.completed)
 
   /** 按分类 + 标签 + 分类筛选 + 搜索关键词筛选后的列表 */
   const filteredTorrents = computed<Torrent[]>(() => {
@@ -307,6 +305,7 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     try {
       const list = await getTorrents({ sort: 'added_on', reverse: true })
       torrents.value = list
+      reconcileSelection(list)
     } finally {
       if (isFirstLoad) {
         initialized.value = true
@@ -393,6 +392,16 @@ export const useTorrentListStore = defineStore('torrentList', () => {
   /** 获取选中的 hash 数组 */
   function selectedArray(): string[] {
     return [...selectedHashes.value]
+  }
+
+  /** 移除已被后台删除、当前列表中不再存在的选中项 */
+  function reconcileSelection(list: Torrent[]): void {
+    if (!selectedHashes.value.size) return
+    const availableHashes = new Set(list.map((torrent) => torrent.hash))
+    const next = new Set(
+      [...selectedHashes.value].filter((hash) => availableHashes.has(hash)),
+    )
+    if (next.size !== selectedHashes.value.size) selectedHashes.value = next
   }
 
   /** 暂停选中 */
