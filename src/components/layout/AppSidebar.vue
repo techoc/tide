@@ -95,9 +95,87 @@ function formatCount(n: number): string {
   return n > 999 ? '999+' : String(n)
 }
 
+// ===== 标签管理 =====
+
+const tagModal = ref({
+  open: false,
+  mode: 'create' as 'create' | 'edit',
+  names: [] as string[],
+  name: '',
+  originalName: '',
+})
+const tagSaving = ref(false)
+
+function openCreateTag() {
+  tagModal.value = {
+    open: true,
+    mode: 'create',
+    names: [],
+    name: '',
+    originalName: '',
+  }
+}
+
+function openEditTag(tag: string) {
+  tagModal.value = {
+    open: true,
+    mode: 'edit',
+    names: [],
+    name: tag,
+    originalName: tag,
+  }
+}
+
+async function saveTag() {
+  const { mode, names, name, originalName } = tagModal.value
+  const normalized = mode === 'create'
+    ? [...new Set(names.map((tag) => tag.trim()).filter(Boolean))]
+    : [name.trim()].filter(Boolean)
+  if (!normalized.length) {
+    toast.add({ title: '标签名称不能为空', color: 'warning' })
+    return
+  }
+  if (normalized.some((tag) => tag.includes(','))) {
+    toast.add({ title: '标签名称不能包含逗号', color: 'warning' })
+    return
+  }
+  const duplicate = normalized.find(
+    (tag) => store.tags.includes(tag) && (mode === 'create' || tag !== originalName),
+  )
+  if (duplicate) {
+    toast.add({ title: `标签「${duplicate}」已存在`, color: 'warning' })
+    return
+  }
+
+  tagSaving.value = true
+  try {
+    if (mode === 'create') {
+      await store.createTags(normalized)
+      toast.add({ title: `已创建 ${normalized.length} 个标签`, color: 'success' })
+    } else {
+      await store.renameTag(originalName, normalized[0]!)
+      toast.add({ title: '标签已重命名', color: 'success' })
+    }
+    tagModal.value.open = false
+  } catch {
+    toast.add({ title: mode === 'create' ? '创建失败' : '重命名失败', color: 'error' })
+  } finally {
+    tagSaving.value = false
+  }
+}
+
+async function deleteTagAction(tag: string) {
+  tagModal.value.open = false
+  await deleteTag(tag)
+}
+
 // 右键删除标签
 async function onTagContextMenu(e: MouseEvent, tag: string) {
   e.preventDefault()
+  await deleteTag(tag)
+}
+
+async function deleteTag(tag: string) {
   const confirmed = await confirmDialog.confirm({
     title: '删除标签',
     description: `确认删除标签「${tag}」？该标签会从所有种子中移除。`,
@@ -323,35 +401,56 @@ async function deleteCategoryAction(name: string) {
 
       <!-- 标签列表 -->
       <section v-if="!collapsed" class="mt-3 pb-3">
-      <div class="px-2.5 pb-1.5 pt-2 text-[11px] font-semibold uppercase tracking-[0.6px] text-muted">
-        <span>标签</span>
-      </div>
-      <div>
-        <div v-if="store.tags.length === 0" class="px-2.5 py-3 text-xs text-muted">
-          暂无标签
+        <div class="flex items-center justify-between px-2.5 pb-1.5 pt-2">
+          <span class="text-[11px] font-semibold uppercase tracking-[0.6px] text-muted">标签</span>
+          <UButton
+            icon="i-lucide-plus"
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            aria-label="新建标签"
+            @click="openCreateTag"
+          />
         </div>
-        <nav v-else class="flex flex-col gap-0.5">
-          <button
-            v-for="tag in store.tags"
-            :key="tag"
-            class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
-            :class="isDashboard && store.activeTag === tag ? 'bg-primary/15 text-primary' : 'text-default'"
-            @click="selectTag(tag)"
-            @contextmenu="onTagContextMenu($event, tag)"
-          >
-            <span
-              class="grid flex-shrink-0 place-items-center"
-              :class="isDashboard && store.activeTag === tag ? 'text-primary' : 'text-muted'"
+        <div>
+          <div v-if="store.tags.length === 0" class="px-2.5 py-3 text-xs text-muted">
+            暂无标签
+          </div>
+          <nav v-else class="flex flex-col gap-0.5">
+            <div
+              v-for="tag in store.tags"
+              :key="tag"
+              class="group flex w-full cursor-pointer items-center gap-2.5 rounded-lg border-none bg-transparent px-2.5 py-2 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+              :class="isDashboard && store.activeTag === tag ? 'bg-primary/15 text-primary' : 'text-default'"
+              @contextmenu="onTagContextMenu($event, tag)"
             >
-              <UIcon name="i-lucide-tag" class="size-[16px]" />
-            </span>
-            <span class="flex-1 truncate text-[13px]">{{ tag }}</span>
-            <span class="text-xs tabular-nums text-muted">
-              {{ store.tagCounts[tag] ?? 0 }}
-            </span>
-          </button>
-        </nav>
-      </div>
+              <button
+                class="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 border-none bg-transparent p-0 text-left"
+                @click="selectTag(tag)"
+              >
+                <span
+                  class="grid flex-shrink-0 place-items-center"
+                  :class="isDashboard && store.activeTag === tag ? 'text-primary' : 'text-muted'"
+                >
+                  <UIcon name="i-lucide-tag" class="size-[16px]" />
+                </span>
+                <span class="flex-1 truncate text-[13px]">{{ tag }}</span>
+              </button>
+              <span class="text-xs tabular-nums text-muted">
+                {{ store.tagCounts[tag] ?? 0 }}
+              </span>
+              <UButton
+                icon="i-lucide-pencil"
+                color="neutral"
+                variant="ghost"
+                size="xs"
+                class="-my-1 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                :aria-label="`编辑标签 ${tag}`"
+                @click="openEditTag(tag)"
+              />
+            </div>
+          </nav>
+        </div>
       </section>
     </div>
 
@@ -476,6 +575,49 @@ async function deleteCategoryAction(name: string) {
               @click="saveCategory"
             >
               {{ categoryModal.mode === 'create' ? '创建' : '保存' }}
+            </UButton>
+          </div>
+        </div>
+      </template>
+    </UModal>
+
+    <!-- 标签创建/编辑弹窗 -->
+    <UModal v-model:open="tagModal.open" :title="tagModal.mode === 'create' ? '新建标签' : '编辑标签'">
+      <template #body>
+        <UFormField :label="tagModal.mode === 'create' ? '标签名称' : '新名称'" required>
+          <UInputTags
+            v-if="tagModal.mode === 'create'"
+            v-model="tagModal.names"
+            placeholder="输入后回车，可创建多个"
+            class="w-full"
+          />
+          <UInput
+            v-else
+            v-model="tagModal.name"
+            placeholder="输入标签名称"
+            class="w-full"
+            @keydown.enter="saveTag"
+          />
+        </UFormField>
+        <p v-if="tagModal.mode === 'edit'" class="mt-2 text-xs text-muted">
+          重命名后，原标签关联的种子会自动迁移到新标签。
+        </p>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-between gap-2">
+          <UButton
+            v-if="tagModal.mode === 'edit'"
+            color="error"
+            variant="soft"
+            icon="i-lucide-trash"
+            @click="deleteTagAction(tagModal.originalName)"
+          >
+            删除
+          </UButton>
+          <div class="ml-auto flex gap-2">
+            <UButton color="neutral" variant="ghost" @click="() => { tagModal.open = false }">取消</UButton>
+            <UButton color="primary" :loading="tagSaving" @click="saveTag">
+              {{ tagModal.mode === 'create' ? '创建' : '保存' }}
             </UButton>
           </div>
         </div>

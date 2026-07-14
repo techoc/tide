@@ -113,7 +113,7 @@ function buildActionItems(torrent: Torrent) {
     { label: '复制名称', icon: 'i-lucide-file-copy', onSelect: () => handleCopyName(torrent) },
     { label: '导出 .torrent', icon: 'i-lucide-download', onSelect: () => handleExport(torrent) },
     { type: 'separator' as const },
-    { label: '添加标签', icon: 'i-lucide-tag', onSelect: () => emit('add-tag', torrent.hash) },
+    { label: '管理标签', icon: 'i-lucide-tags', onSelect: () => emit('add-tag', torrent.hash) },
     { label: '重命名', icon: 'i-lucide-pencil', onSelect: () => openRenameModal(torrent) },
     { type: 'separator' as const },
     { label: '删除种子', icon: 'i-lucide-trash', color: 'error' as const, onSelect: () => handleDelete(torrent) },

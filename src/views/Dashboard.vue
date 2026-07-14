@@ -132,6 +132,7 @@ function closeContextMenu() {
 const tagModal = ref({
   open: false,
   hashes: [] as string[],
+  initialTags: [] as string[],
   targetLabel: '',
 })
 
@@ -140,6 +141,9 @@ function openTagModalForHash(hash: string, name?: string) {
   tagModal.value = {
     open: true,
     hashes: [hash],
+    initialTags: store.torrents
+      .find((torrent) => torrent.hash === hash)
+      ?.tags.split(',').map((tag) => tag.trim()).filter(Boolean) ?? [],
     targetLabel: name ? `「${name}」` : '1 个种子',
   }
 }
@@ -284,8 +288,9 @@ function onAddTag(hash: string) {
     <!-- 标签选择弹窗（单行操作） -->
     <TagSelectorModal
       v-model:open="tagModal.open"
-      mode="add"
+      mode="manage"
       :hashes="tagModal.hashes"
+      :initial-tags="tagModal.initialTags"
       :target-label="tagModal.targetLabel"
     />
 

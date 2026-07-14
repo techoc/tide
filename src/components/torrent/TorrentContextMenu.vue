@@ -127,7 +127,7 @@ async function handleExport() {
   emit('close')
 }
 
-/** 添加标签 */
+/** 管理标签 */
 function handleAddTag() {
   if (!props.torrent) return
   emit('add-tag', props.torrent.hash)
@@ -265,13 +265,13 @@ async function handleDelete() {
         <!-- 分隔线 -->
         <div class="h-px bg-default my-1" />
 
-        <!-- 添加标签 -->
+        <!-- 管理标签 -->
         <button
           class="flex items-center gap-2.5 w-full px-3 py-1.5 text-sm text-left cursor-pointer hover:bg-elevated transition-colors"
           @click="handleAddTag"
         >
-          <UIcon name="i-lucide-tag" class="size-4 shrink-0" />
-          <span>添加标签</span>
+          <UIcon name="i-lucide-tags" class="size-4 shrink-0" />
+          <span>管理标签</span>
         </button>
 
         <!-- 重命名 -->

@@ -9,6 +9,7 @@ import {
   getTags,
   addTags,
   removeTags,
+  createTags as createTagsApi,
   deleteTags as deleteTagsApi,
   forceStartTorrents,
   getCategories,
@@ -444,6 +445,48 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     await fetchTorrents()
   }
 
+  /** 将指定种子的标签更新为目标集合 */
+  async function updateTorrentTags(
+    hashes: string[],
+    currentTags: string[],
+    nextTags: string[],
+  ): Promise<void> {
+    if (!hashes.length) return
+    const current = new Set(currentTags)
+    const next = new Set(nextTags)
+    const added = [...next].filter((tag) => !current.has(tag))
+    const removed = [...current].filter((tag) => !next.has(tag))
+
+    if (added.length) await addTags(hashes, added.join(','))
+    if (removed.length) await removeTags(hashes, removed.join(','))
+    await fetchTags()
+    await fetchTorrents()
+  }
+
+  /** 创建标签定义 */
+  async function createTags(tagNames: string[]): Promise<void> {
+    const normalized = [...new Set(tagNames.map((tag) => tag.trim()).filter(Boolean))]
+    if (!normalized.length) return
+    await createTagsApi(normalized)
+    await fetchTags()
+  }
+
+  /** 重命名标签，并保留该标签关联的种子 */
+  async function renameTag(oldTag: string, newTag: string): Promise<void> {
+    const normalized = newTag.trim()
+    if (!normalized || normalized === oldTag) return
+    const hashes = torrents.value
+      .filter((torrent) => torrent.tags.split(',').map((tag) => tag.trim()).includes(oldTag))
+      .map((torrent) => torrent.hash)
+
+    await createTagsApi([normalized])
+    if (hashes.length) await addTags(hashes, normalized)
+    await deleteTagsApi([oldTag])
+    if (activeTag.value === oldTag) activeTag.value = normalized
+    await fetchTags()
+    await fetchTorrents()
+  }
+
   /** 删除标签定义（从 qBittorrent 标签列表中移除） */
   async function deleteTag(tag: string): Promise<void> {
     await deleteTagsApi([tag])
@@ -656,6 +699,9 @@ export const useTorrentListStore = defineStore('torrentList', () => {
     deleteSelected,
     addTagsToSelected,
     removeTagsFromSelected,
+    updateTorrentTags,
+    createTags,
+    renameTag,
     deleteTag,
     createCategory,
     editCategory,

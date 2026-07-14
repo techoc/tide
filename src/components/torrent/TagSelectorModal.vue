@@ -4,8 +4,9 @@ import { useTorrentListStore } from '@/stores/torrentList'
 
 const props = defineProps<{
   open: boolean
-  mode: 'add' | 'remove'
+  mode: 'add' | 'remove' | 'manage'
   hashes: string[]
+  initialTags?: string[]
   /** 目标描述（如种子名称或"选中的 N 项"），用于弹窗提示 */
   targetLabel?: string
 }>()
@@ -23,11 +24,15 @@ const selectedTags = ref<Set<string>>(new Set())
 const newTagInput = ref('')
 
 /** 弹窗标题 */
-const title = computed(() => (props.mode === 'add' ? '添加标签' : '移除标签'))
+const title = computed(() => {
+  if (props.mode === 'manage') return '管理标签'
+  return props.mode === 'add' ? '添加标签' : '移除标签'
+})
 
 /** 副标题描述 */
 const description = computed(() => {
   const target = props.targetLabel ?? `${props.hashes.length} 个种子`
+  if (props.mode === 'manage') return `为${target}设置标签：`
   return `对${target}${props.mode === 'add' ? '添加' : '移除'}以下标签：`
 })
 
@@ -46,7 +51,7 @@ watch(
   () => props.open,
   (open) => {
     if (open) {
-      selectedTags.value = new Set()
+      selectedTags.value = new Set(props.mode === 'manage' ? props.initialTags ?? [] : [])
       newTagInput.value = ''
     }
   },
@@ -63,13 +68,16 @@ function toggleTag(tag: string) {
 /** 提交标签操作 */
 async function handleSubmit() {
   const tags = allSelectedTags.value
-  if (!tags.length) {
+  if (!tags.length && props.mode !== 'manage') {
     toast.add({ title: '请选择或输入至少一个标签', color: 'warning' })
     return
   }
   const tagsStr = tags.join(',')
   try {
-    if (props.mode === 'add') {
+    if (props.mode === 'manage') {
+      await store.updateTorrentTags(props.hashes, props.initialTags ?? [], tags)
+      toast.add({ title: '标签已更新', color: 'success' })
+    } else if (props.mode === 'add') {
       await store.addTagsToSelected(tagsStr, props.hashes)
       toast.add({ title: '标签已添加', color: 'success' })
     } else {
@@ -112,8 +120,8 @@ async function handleSubmit() {
           </div>
         </div>
 
-        <!-- 新标签输入（仅 add 模式） -->
-        <div v-if="mode === 'add'" class="mb-4">
+        <!-- 新标签输入（添加或完整管理模式） -->
+        <div v-if="mode !== 'remove'" class="mb-4">
           <div class="text-xs font-medium text-muted mb-2">新标签（逗号分隔）</div>
           <UInput
             v-model="newTagInput"
@@ -130,7 +138,7 @@ async function handleSubmit() {
               v-for="tag in allSelectedTags"
               :key="tag"
               :label="tag"
-              :color="mode === 'add' ? 'primary' : 'warning'"
+              :color="mode === 'remove' ? 'warning' : 'primary'"
               variant="subtle"
             />
           </div>
@@ -141,7 +149,9 @@ async function handleSubmit() {
           <UButton color="neutral" variant="ghost" @click="emit('update:open', false)">
             取消
           </UButton>
-          <UButton color="primary" @click="handleSubmit">确定</UButton>
+          <UButton color="primary" @click="handleSubmit">
+            {{ mode === 'manage' ? '保存' : '确定' }}
+          </UButton>
         </div>
       </div>
     </template>
