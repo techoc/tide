@@ -51,6 +51,12 @@ const router = createRouter({
           component: () => import('@/views/Settings.vue'),
           meta: { title: '设置' },
         },
+        {
+          path: 'advanced',
+          name: 'advanced',
+          component: () => import('@/views/AdvancedTools.vue'),
+          meta: { title: '高级工具' },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

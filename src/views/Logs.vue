@@ -1,7 +1,7 @@
 <script setup lang="ts">
 defineOptions({ name: 'LogsView' })
 
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { getMainLog, getPeerLog } from '@/api/modules/log'
 import type { LogEntry, PeerLogEntry } from '@/types/qbittorrent'
 import { formatTimestamp } from '@/utils/format'
@@ -12,7 +12,22 @@ const loading = ref(false)
 const query = ref('')
 const mainLogs = ref<LogEntry[]>([])
 const peerLogs = ref<PeerLogEntry[]>([])
-const levels = ref({ normal: true, info: true, warning: true, critical: true })
+const selectedLevel = ref<'all' | 'normal' | 'info' | 'warning' | 'critical'>('all')
+
+const levelItems = [
+  { label: '全部级别', value: 'all' },
+  { label: '普通', value: 'normal' },
+  { label: '信息', value: 'info' },
+  { label: '警告', value: 'warning' },
+  { label: '严重', value: 'critical' },
+]
+
+const levels = computed(() => ({
+  normal: selectedLevel.value === 'all' || selectedLevel.value === 'normal',
+  info: selectedLevel.value === 'all' || selectedLevel.value === 'info',
+  warning: selectedLevel.value === 'all' || selectedLevel.value === 'warning',
+  critical: selectedLevel.value === 'all' || selectedLevel.value === 'critical',
+}))
 
 const filteredMain = computed(() => {
   const value = query.value.trim().toLowerCase()
@@ -57,6 +72,8 @@ async function switchTab(value: 'main' | 'peers') {
   await refresh()
 }
 
+watch(selectedLevel, () => void refresh())
+
 void refresh()
 </script>
 
@@ -75,20 +92,22 @@ void refresh()
         <UButton :variant="activeTab === 'main' ? 'solid' : 'ghost'" size="sm" @click="switchTab('main')">主日志</UButton>
         <UButton :variant="activeTab === 'peers' ? 'solid' : 'ghost'" size="sm" @click="switchTab('peers')">Peer 日志</UButton>
       </div>
-      <UInput v-model="query" icon="i-lucide-search" placeholder="筛选日志" class="w-full sm:w-72" />
-    </div>
-
-    <div v-if="activeTab === 'main'" class="mb-3 flex flex-wrap gap-4 text-sm">
-      <UCheckbox v-model="levels.normal" label="普通" @change="refresh" />
-      <UCheckbox v-model="levels.info" label="信息" @change="refresh" />
-      <UCheckbox v-model="levels.warning" label="警告" @change="refresh" />
-      <UCheckbox v-model="levels.critical" label="严重" @change="refresh" />
+      <div class="flex w-full gap-2 sm:w-auto">
+        <USelect
+          v-if="activeTab === 'main'"
+          v-model="selectedLevel"
+          :items="levelItems"
+          aria-label="日志级别"
+          class="w-32 shrink-0"
+        />
+        <UInput v-model="query" icon="i-lucide-search" placeholder="筛选日志" class="min-w-0 flex-1 sm:w-72" />
+      </div>
     </div>
 
     <div class="min-h-0 flex-1 overflow-auto rounded-2xl border border-default bg-default">
       <div v-if="activeTab === 'main'">
         <div v-for="item in filteredMain" :key="item.id" class="grid gap-2 border-b border-default px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[160px_76px_1fr]">
-          <span class="text-xs tabular-nums text-muted">{{ formatTimestamp(item.timestamp / 1000) }}</span>
+          <span class="text-xs tabular-nums text-muted">{{ formatTimestamp(item.timestamp) }}</span>
           <UBadge :label="logLabel(item.type)" :color="logColor(item.type)" variant="subtle" size="sm" class="w-fit" />
           <span class="break-words font-mono text-xs">{{ item.message }}</span>
         </div>
@@ -96,7 +115,7 @@ void refresh()
       </div>
       <div v-else>
         <div v-for="item in filteredPeers" :key="item.id" class="grid gap-2 border-b border-default px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[160px_180px_80px_1fr]">
-          <span class="text-xs tabular-nums text-muted">{{ formatTimestamp(item.timestamp / 1000) }}</span>
+          <span class="text-xs tabular-nums text-muted">{{ formatTimestamp(item.timestamp) }}</span>
           <span class="font-mono text-xs">{{ item.ip }}</span>
           <UBadge :label="item.blocked ? '已封禁' : '已放行'" :color="item.blocked ? 'error' : 'success'" variant="subtle" size="sm" class="w-fit" />
           <span class="text-xs text-muted">{{ item.reason || '—' }}</span>

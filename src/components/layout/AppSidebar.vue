@@ -48,6 +48,7 @@ const bottomItems = [
   { to: '/rss', label: 'RSS 订阅', icon: 'i-lucide-rss' },
   { to: '/logs', label: '运行日志', icon: 'i-lucide-scroll-text' },
   { to: '/stats', label: '统计概览', icon: 'i-lucide-bar-chart-3' },
+  { to: '/advanced', label: '高级工具', icon: 'i-lucide-wrench' },
   { to: '/settings', label: '设置', icon: 'i-lucide-settings' },
 ]
 

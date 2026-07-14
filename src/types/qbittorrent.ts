@@ -83,6 +83,7 @@ export interface Torrent {
   ratio: number
   ratio_limit: number
   save_path: string
+  download_path?: string
   seq_dl: boolean
   seeding_time: number
   seeding_time_limit: number
@@ -142,6 +143,9 @@ export interface TorrentPeers {
     }
   >
 }
+
+/** 批量种子接口接受竖线分隔的 hash，或特殊值 all。 */
+export type TorrentHashes = string[] | 'all'
 
 /** 添加种子参数 */
 export interface AddTorrentParams {

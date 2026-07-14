@@ -22,6 +22,28 @@ export function getBaseUrl(): string {
   return http.defaults.baseURL ?? '/api/v2'
 }
 
+/** 使用 qBittorrent API Key 认证（Web API 2.11.3+）。 */
+export function setApiKey(apiKey: string): void {
+  const value = apiKey.trim()
+  if (value) {
+    http.defaults.headers.common.Authorization = `Bearer ${value}`
+  } else {
+    clearApiKey()
+  }
+}
+
+/** 清除当前 API Key，恢复 Cookie（SID）认证。 */
+export function clearApiKey(): void {
+  delete http.defaults.headers.common.Authorization
+}
+
+/** 获取当前配置的 API Key；未配置时返回空字符串。 */
+export function getApiKey(): string {
+  const authorization = http.defaults.headers.common.Authorization
+  if (typeof authorization !== 'string') return ''
+  return authorization.replace(/^Bearer\s+/i, '')
+}
+
 // 响应拦截：统一错误处理
 http.interceptors.response.use(
   (res) => res,
